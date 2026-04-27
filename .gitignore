@@ -1,0 +1,7 @@
+# test execution artefacts
+logs/*.log
+
+# editor / system
+*.swp
+*.swo
+.DS_Store
