@@ -48,12 +48,13 @@ ip netns exec srgw sysctl -wq net.ipv4.ip_forward=1
 ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 
 # Linux End.M.GTP4.E: prefix 2001:db8::/32, v4_mask_len 32 — final SID
-# of the SR path; fires when SL=0.  v6_src_prefix_len 64 places the
-# IPv4 SA at byte 8..11 of the SRv6 outer SA (RFC 9433 §6.6 Figure 10
-# with P=64), matching VPP's "v6src_prefix .../64" default below.
+# of the SR path; fires when SL=0.  Linux fixes the Source UPF Prefix
+# at /64 (RFC 9433 §6.6 Figure 10 with P=64): IPv4 SA at bytes 8..11
+# of the IPv6 SA, bytes 12..15 are ignored padding.  This matches VPP's
+# "v6src_prefix .../64" below.
 ip -n srgw -6 route add 2001:db8::/32 \
     encap seg6local action End.M.GTP4.E \
-        src 2001:db8:1::2 v4_mask_len 32 v6_src_prefix_len 64 \
+        src 2001:db8:1::2 v4_mask_len 32 \
     dev veth-e
 
 # Generic RFC 8986 End at the "実体側" placeholder SID (= the segment
@@ -115,9 +116,9 @@ $VPPCTL sr policy add bsid 2001:db8:: next 2001:db8:dead::1 encap
 # t.m.gtp4.d behavior — strips inbound IPv4/UDP/GTP-U, computes
 # dynamic SID = locator(/32) | IPv4 DA(32) | Args.Mob.Session(40),
 # stacks it onto the policy above.  v6src_prefix /64 places the gNB
-# IPv4 SA at byte 8..11 of the SRv6 outer SA (RFC 9433 §6.6 Figure 10
-# canonical layout, P=64).  Linux's End.M.GTP4.E route is configured
-# with the matching v6_src_prefix_len 64 above.
+# IPv4 SA at bytes 8..11 of the SRv6 outer SA (RFC 9433 §6.6 Figure 10
+# canonical layout, P=64), which is the layout Linux End.M.GTP4.E
+# expects (Linux fixes the Source UPF Prefix at /64).
 $VPPCTL sr policy add bsid 2001:db8:5::1 \
     behavior t.m.gtp4.d 2001:db8::/32 \
     v6src_prefix 2001:db8:1::/64 \
