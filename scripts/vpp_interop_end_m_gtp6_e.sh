@@ -52,8 +52,9 @@ ip -n srgw -6 route add 2001:db8:f::/64 \
         src 2001:db8:2::1 \
     dev veth-e
 
-# After Linux decap, the new GTP-U dst = SRH segments[0] (= original VPP-side
-# UPF address 2001:db8:6::1).  Route that toward dn to observe.
+# After Linux End.M.GTP6.E decap, the new GTP-U dst = SRH segments[0]
+# (= original GTP-peer address 2001:db8:6::1 that VPP encoded as the
+# tunnel target).  Route that toward dn to observe.
 ip -n srgw -6 route add 2001:db8:6::/64 via 2001:db8:3::2 dev veth-x
 
 vpp -c /tmp/vpp/startup.conf > /tmp/vpp/stdout.log 2>&1 &
@@ -109,7 +110,10 @@ $VPPCTL trace add af-packet-input 20
 
 ip netns exec gnb tcpdump -U -nni veth-g-gnb -w /tmp/input.pcap 'ip6' 2>/dev/null &
 P_IN=$!
-tcpdump -U -nni veth-e-vpp -w /tmp/srv6.pcap 'ip6' 2>/dev/null &
+# Capture wire on srgw-side veth peer: VPP's af_packet TX on host-veth-e-vpp
+# is invisible to tcpdump on the same iface, so capture on the kernel-side
+# veth where the SRv6 packet arrives as RX from the veth pair.
+ip netns exec srgw tcpdump -U -nni veth-e -w /tmp/srv6.pcap 'ip6' 2>/dev/null &
 P_SRV6=$!
 ip netns exec dn  tcpdump -U -nni veth-x-dn -w /tmp/dn.pcap 'ip6 and udp port 2152' 2>/dev/null &
 P_DN=$!
