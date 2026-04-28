@@ -12,15 +12,60 @@ The same address plan is reused across all scenarios:
 |---|---|
 | `2001:db8:1::/64` | gnb ↔ srgw IPv6 link |
 | `2001:db8:2::/64` | srgw ↔ VPP IPv6 link (SR-domain ingress side) |
-| `2001:db8:3::/64` | VPP ↔ dn IPv6 link (post-decap GTP-U observation point) |
-| `2001:db8:e::/88` | uplink IPv6 — End.M.GTP6.E SID locator |
-| `2001:db8:f::/56` (IPv4 family) | End.M.GTP4.E / H.M.GTP4.D locator (`v4mask 32`, `sr_prefix_len 56`) |
+| `2001:db8:3::/64` | far-side GTP-peer link (IPv6, post-decap observation) |
+| `2001:db8:e::/88` | End.M.GTP6.E SID locator |
+| `2001:db8:f::/56` (IPv4 family) | End.M.GTP4.E / H.M.GTP4.D locator (`v4_mask_len 32`, `sr_prefix_len 56`) |
 | `2001:db8:f::/48` (IPv6 family) | End.M.GTP6.D routing prefix |
-| `2001:db8:5::1/128` | downlink IPv4 — VPP SR Policy BSID |
-| `2001:db8:6::/64` | downlink IPv6 — VPP `end.m.gtp6.d` localsid prefix |
+| `2001:db8:5::1/128` | VPP SR Policy BSID (encap-side scenarios) |
+| `2001:db8:6::/64` | VPP `end.m.gtp6.d` localsid prefix |
 | `10.0.0.0/24` | gnb ↔ srgw IPv4 link |
-| `10.99.0.0/24` | "5G UPF egress" IPv4 (the End.M.GTP4.E DA recovery target) |
-| `10.0.1.0/24` | VPP ↔ dn IPv4 link (egress GTP-U observation point) |
+| `10.99.0.0/24` | far-side GTP-peer IPv4 address space (End.M.GTP4.E DA recovery target) |
+| `10.0.1.0/24` | far-side GTP-peer IPv4 link (post-decap observation) |
+
+## SRv6 MUP architecture mapping
+
+The canonical SRv6 MUP architecture (no UPF in the data path) is:
+
+```
+UE ── MUP-PE ── (SR-domain, SRv6) ── MUP-GW ── gNB
+```
+
+- **MUP-PE**: SR-domain edge on the UE side. Terminates / originates SRv6
+  toward the UE-network. Does *not* speak GTP-U.
+- **MUP-GW**: SR-domain edge on the gNB side. Translates between
+  GTP-U (toward gNB on N3) and SRv6 (toward MUP-PE).
+
+The RFC 9433 §6 behaviors live at the **MUP-GW** position because they
+bridge GTP-U and SRv6:
+
+- D-family (encap): `H.M.GTP4.D`, `End.M.GTP6.D`, `End.M.GTP6.D.Di` —
+  consume GTP-U from gNB, emit SRv6 into the SR-domain (UL).
+- E-family (decap): `End.M.GTP4.E`, `End.M.GTP6.E` —
+  consume SRv6, emit GTP-U toward gNB (DL).
+
+In these interop scenarios both ends of the SR-domain run a §6 behavior
+(both are **MUP-GW** instances). The framework therefore exercises a
+"MUP-GW ↔ MUP-GW" GTP-preserving SR transit; a real deployment would
+typically have one MUP-GW and one MUP-PE.
+
+Per scenario:
+
+| Script | Linux role | VPP role | Direction | gnb netns plays | dn netns plays |
+|---|---|---|---|---|---|
+| `vpp_interop_h_m_gtp4_d.sh` | MUP-GW (encap, §6.7) | MUP-GW (decap, §6.6) | UL (4G) | gNB / UL source | far-side GTP peer |
+| `vpp_interop_end_m_gtp4_e.sh` | MUP-GW (decap, §6.6) | MUP-PE (plain SR encap workaround) | DL (4G) | DL source / far peer | gNB-side GTP receiver |
+| `vpp_interop_end_m_gtp6_d.sh` | MUP-GW (encap, §6.3) | MUP-GW (decap, §6.5) | UL (5G) | gNB / UL source | far-side GTP peer |
+| `vpp_interop_end_m_gtp6_e.sh` | MUP-GW (decap, §6.5) | MUP-GW (encap, §6.3 drop-in) | DL (5G) | DL source / far peer | gNB-side GTP receiver |
+| `vpp_interop_end_m_gtp6_d_di.sh` | MUP-GW (encap drop-in, §6.4) | MUP-PE (RFC 8986 End) | UL drop-in | gNB / UL source | next-hop SR endpoint |
+
+> Note: the `gnb` and `dn` netns names denote *test ingress* and
+> *test egress* of the harness, **not** 3GPP roles. In E-family
+> scenarios the test ingress is on the DL source side (= upstream of
+> MUP-PE) and the test egress is the gNB receiving the GTP-U;
+> in D-family scenarios the mapping is the opposite. The IP
+> destinations advertised on the wire (`10.99.0.0/24`,
+> `2001:db8:9::dead`, …) are simply the GTP-U outer-DA template the
+> SID encodes, not "UPF" addresses.
 
 ## Linux ingress scenarios — gnb → srgw → VPP → dn
 
@@ -163,9 +208,12 @@ vppctl -s /run/vpp/cli.sock show trace
 
 ### dn
 
-Just an observation point — tcpdump captures arriving packets and a
-small scapy script asserts the relevant invariants (TEID, QFI, outer
-DA, etc.).
+The far-side observation stub. Despite the legacy name `dn`, this
+netns is **not** a 3GPP DN — it stands in for whatever GTP-aware peer
+sits beyond the SR-domain egress (gNB receiving DL N3, another MUP-GW
+in a chain, or a 4G-side GW for §6.6 interop). tcpdump captures
+arriving packets and a small scapy script asserts the relevant
+invariants (TEID, QFI, outer DA, etc.).
 
 ## Why static ARP/ND is required
 

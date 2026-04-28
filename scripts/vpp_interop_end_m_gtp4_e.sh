@@ -47,10 +47,23 @@ ip -n dn  addr add 10.0.1.2/24 dev veth-x-dn
 ip netns exec srgw sysctl -wq net.ipv4.ip_forward=1
 ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 
-# Linux End.M.GTP4.E: prefix 2001:db8::/32, v4mask 32
+# Linux End.M.GTP4.E: prefix 2001:db8::/32, v4_mask_len 32 — final SID
+# of the SR path; fires when SL=0.  v6_src_prefix_len 64 places the
+# IPv4 SA at byte 8..11 of the SRv6 outer SA (RFC 9433 §6.6 Figure 10
+# with P=64), matching VPP's "v6src_prefix .../64" default below.
 ip -n srgw -6 route add 2001:db8::/32 \
     encap seg6local action End.M.GTP4.E \
-        src 2001:db8:2::1 v4mask 32 \
+        src 2001:db8:1::2 v4_mask_len 32 v6_src_prefix_len 64 \
+    dev veth-e
+
+# Generic RFC 8986 End at the "実体側" placeholder SID (= the segment
+# VPP's t.m.gtp4.d uses as the policy's transit hop with the dynamic
+# End.M.GTP4.E SID stacked behind it).  This advances SL/DA so the
+# packet then re-routes via /32 and fires End.M.GTP4.E with SL=0.
+# More-specific /128 must precede the /32 above for longest-prefix
+# match to pick End first.
+ip -n srgw -6 route add 2001:db8:dead::1/128 \
+    encap seg6local action End \
     dev veth-e
 
 # Reach back: srgw needs to know the egress IPv4 destination (10.99.0.0/24)
@@ -74,24 +87,43 @@ $VPPCTL set int promiscuous on host-veth-e-vpp
 $VPPCTL set int ip address host-veth-g 10.0.0.1/24
 $VPPCTL set int ip address host-veth-e-vpp 2001:db8:2::e/64
 
-# NOTE: ideally we would use VPP's "behavior t.m.gtp4.d" SR policy, which
-# is the RFC 9433 §6.7 H.M.GTP4.D equivalent (strip inbound IPv4 GTP-U and
-# encap into SRv6 with the SID encoding IPv4 DA + Args.Mob.Session).  In
-# practice the runtime path of t.m.gtp4.d in VPP 25.10 / FDio master
-# (2026-04-20) does not chain back to the encap node when used through
-# `sr policy add ... behavior t.m.gtp4.d ...`; the plugin returns
-# "T.M.GTP4.D bad packets" and never produces an SRv6 packet.  Until that
-# is debugged upstream, this test uses plain `sr policy ... next ... encap`
-# to wrap the whole inbound IPv4 packet (including its GTP-U headers)
-# inside SRv6.  Linux End.M.GTP4.E at the egress then re-encapsulates the
-# inner -- which is itself an IPv4/UDP/GTP-U from the gNB -- in a fresh
-# IPv4/UDP/GTP-U whose TEID/QFI come from the SID's Args.Mob.Session.
-# The visible side-effect on the egress pcap is a doubled GTP-U; the
-# verification below checks only the outer (= SID-derived) TEID, which is
-# what proves Linux's End.M.GTP4.E works correctly.
-$VPPCTL sr policy add bsid 2001:db8:5::1 next 2001:db8:a63:2:1400:1:2300:0 encap
+# VPP T.M.GTP4.D — the RFC 9433 §6.7 H.M.GTP4.D equivalent.  Three pieces
+# must be in place for the plugin (src/plugins/srv6-mobile/) to actually
+# strip the inbound IPv4/UDP/GTP-U and emit an SRv6 packet:
+#
+#   1. drop-in flag on the t.m.gtp4.d policy.  Without it node.c:1212
+#      forwards the inner G_PDU to ip4-lookup instead of chaining into
+#      the SRv6 encap node (RFC non-compliant).
+#   2. A second "real" SR policy whose BSID matches the t.m.gtp4.d
+#      sr_prefix exactly (16-byte mhash key).  Its SID list is what the
+#      plugin uses to build the SRH on top of the dynamically derived
+#      End.M.GTP4.E SID; without it sl=NULL and you get an SRH-less v6
+#      encap.
+#   3. sr steer to push the IPv4 ingress flow into the t.m.gtp4.d BSID
+#      (the t.m.gtp4.d node only takes IPv4-typed packets).
+#
+# Sources: VPP 25.10 / master (HEAD ca681ca, 2026-04-20)
+# src/plugins/srv6-mobile/{node.c:917,1212; gtp4_d.c:51-64,148}, and the
+# upstream test test/test_srv6_mobile.py:189 (drop_in=1).
+# "実体側" SR policy: VPP's t.m.gtp4.d emits SRH = [dynamic_SID,
+# this_segment] with outer DA = this_segment.  Pointing it at
+# 2001:db8:dead::1 (caught by srgw's End route below) gives a clean
+# one-transit-hop SR path that drops to the End.M.GTP4.E SID with SL=0
+# at Linux.
+$VPPCTL sr policy add bsid 2001:db8:: next 2001:db8:dead::1 encap
 
-# Steer IPv4 GTP-U bound for 10.99.0.0/24 into the SR policy.
+# t.m.gtp4.d behavior — strips inbound IPv4/UDP/GTP-U, computes
+# dynamic SID = locator(/32) | IPv4 DA(32) | Args.Mob.Session(40),
+# stacks it onto the policy above.  v6src_prefix /64 places the gNB
+# IPv4 SA at byte 8..11 of the SRv6 outer SA (RFC 9433 §6.6 Figure 10
+# canonical layout, P=64).  Linux's End.M.GTP4.E route is configured
+# with the matching v6_src_prefix_len 64 above.
+$VPPCTL sr policy add bsid 2001:db8:5::1 \
+    behavior t.m.gtp4.d 2001:db8::/32 \
+    v6src_prefix 2001:db8:1::/64 \
+    nhtype ipv4 fib-table 0 drop-in
+
+# Steer IPv4 GTP-U bound for 10.99.0.0/24 into the t.m.gtp4.d BSID.
 $VPPCTL sr steer l3 10.99.0.0/24 via bsid 2001:db8:5::1
 
 # Route the SRv6 packet emitted by VPP back to srgw (Linux End.M.GTP4.E).
@@ -121,7 +153,10 @@ $VPPCTL trace add af-packet-input 20
 
 ip netns exec gnb tcpdump -U -nni veth-g-gnb -w /tmp/input.pcap 2>/dev/null &
 P_IN=$!
-tcpdump -U -nni veth-e-vpp -w /tmp/srv6.pcap 'ip6' 2>/dev/null &
+# Capture wire on srgw-side veth peer: VPP's af_packet TX on host-veth-e-vpp
+# is invisible to tcpdump on the same iface, so capture on the kernel-side
+# veth where the SRv6 packet arrives as RX from the veth pair.
+ip netns exec srgw tcpdump -U -nni veth-e -w /tmp/srv6.pcap 'ip6' 2>/dev/null &
 P_SRV6=$!
 ip netns exec dn  tcpdump -U -nni veth-x-dn -w /tmp/dn.pcap 'udp port 2152' 2>/dev/null &
 P_DN=$!
