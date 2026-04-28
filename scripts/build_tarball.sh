@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Build the CML2-distribution tarball ~/srv6-mup-cml2.tar.gz from:
+# Build the SRv6 MUP distribution tarball ~/srv6-mup-bundle.tar.gz from:
 #   - Linux kernel at  $LINUX  (default ~/ghq/github.com/higebu/linux)
 #       built with `make bindeb-pkg` to produce linux-image / linux-headers /
 #       linux-libc-dev .deb
 #   - iproute2  at  $IPROUTE2  (default ~/ghq/github.com/higebu/iproute2)
 #       repackaged inside an Ubuntu Noble Docker container so the resulting
-#       deb satisfies CML2 ubuntu-24.04 nodes' libc dependency
+#       deb satisfies Ubuntu 24.04 LTS (libc6 >= 2.38) targets.
 #   - selftests from $LINUX/tools/testing/selftests/net/srv6_*_test.sh
 #       (plus lib.sh and lib/sh/defer.sh that they source)
 #
@@ -23,8 +23,8 @@
 # Reference Ubuntu iproute2 .debs are needed once to copy the maintainer
 # scripts and conffiles list out of (so the resulting package looks like a
 # vanilla Ubuntu drop-in to apt).  Default location:
-#   $REF_IPROUTE2_DEB     = ~/srv6-mup-cml2/iproute2_*.deb     (any version)
-#   $REF_IPROUTE2_DOC_DEB = ~/srv6-mup-cml2/iproute2-doc_*.deb (any version)
+#   $REF_IPROUTE2_DEB     = ~/srv6-mup-bundle/iproute2_*.deb     (any version)
+#   $REF_IPROUTE2_DOC_DEB = ~/srv6-mup-bundle/iproute2-doc_*.deb (any version)
 # A previous version of the tarball is fine.
 
 set -euo pipefail
@@ -34,16 +34,16 @@ IPROUTE2=${IPROUTE2:-/home/yuya/ghq/github.com/higebu/iproute2}
 DOCKER_IMG=${DOCKER_IMG:-srv6mup-build:noble}
 KERNEL_PKG_VER=${KERNEL_PKG_VER:-7.0.0-srv6mup-13}
 IPROUTE2_PKG_TAG=${IPROUTE2_PKG_TAG:-srv6mup10}
-OUT=${OUT:-$HOME/srv6-mup-cml2.tar.gz}
-REF_IPROUTE2_DEB=${REF_IPROUTE2_DEB:-$HOME/srv6-mup-cml2/iproute2_*.deb}
-REF_IPROUTE2_DOC_DEB=${REF_IPROUTE2_DOC_DEB:-$HOME/srv6-mup-cml2/iproute2-doc_*.deb}
+OUT=${OUT:-$HOME/srv6-mup-bundle.tar.gz}
+REF_IPROUTE2_DEB=${REF_IPROUTE2_DEB:-$HOME/srv6-mup-bundle/iproute2_*.deb}
+REF_IPROUTE2_DOC_DEB=${REF_IPROUTE2_DOC_DEB:-$HOME/srv6-mup-bundle/iproute2-doc_*.deb}
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 INNER_BUILD=$HERE/_build_iproute2_inside_docker.sh
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-mkdir -p "$stage/srv6-mup-cml2/selftests/lib/sh"
+mkdir -p "$stage/srv6-mup-bundle/selftests/lib/sh"
 
 ###############################################################################
 # 1. Linux kernel deb
@@ -67,9 +67,9 @@ if [ ${#linux_image[@]} -ne 1 ] || [ ${#linux_headers[@]} -ne 1 ] || [ ${#linux_
     exit 1
 fi
 
-cp "${linux_image[0]}"    "$stage/srv6-mup-cml2/"
-cp "${linux_headers[0]}"  "$stage/srv6-mup-cml2/"
-cp "${linux_libc_dev[0]}" "$stage/srv6-mup-cml2/"
+cp "${linux_image[0]}"    "$stage/srv6-mup-bundle/"
+cp "${linux_headers[0]}"  "$stage/srv6-mup-bundle/"
+cp "${linux_libc_dev[0]}" "$stage/srv6-mup-bundle/"
 
 uname_r=$(basename "${linux_image[0]}" .deb | sed -e 's/^linux-image-//' -e "s/_${KERNEL_PKG_VER}_amd64$//")
 
@@ -94,8 +94,8 @@ docker run --rm \
     -e VERSION_TAG="$IPROUTE2_PKG_TAG" \
     "$DOCKER_IMG" bash /build.sh
 
-cp "$iproute2_out"/iproute2_*.deb     "$stage/srv6-mup-cml2/"
-cp "$iproute2_out"/iproute2-doc_*.deb "$stage/srv6-mup-cml2/"
+cp "$iproute2_out"/iproute2_*.deb     "$stage/srv6-mup-bundle/"
+cp "$iproute2_out"/iproute2-doc_*.deb "$stage/srv6-mup-bundle/"
 rm -rf "$iproute2_out"
 
 ###############################################################################
@@ -106,19 +106,19 @@ sft="$LINUX/tools/testing/selftests/net"
 for t in srv6_end_m_gtp4_e_test.sh srv6_end_m_gtp6_d_test.sh \
          srv6_end_m_gtp6_d_di_test.sh srv6_end_m_gtp6_e_test.sh \
          srv6_end_map_test.sh srv6_h_m_gtp4_d_test.sh; do
-    cp "$sft/$t" "$stage/srv6-mup-cml2/selftests/"
+    cp "$sft/$t" "$stage/srv6-mup-bundle/selftests/"
 done
-cp "$sft/lib.sh"            "$stage/srv6-mup-cml2/selftests/"
-cp "$sft/lib/sh/defer.sh"   "$stage/srv6-mup-cml2/selftests/lib/sh/"
+cp "$sft/lib.sh"            "$stage/srv6-mup-bundle/selftests/"
+cp "$sft/lib/sh/defer.sh"   "$stage/srv6-mup-bundle/selftests/lib/sh/"
 
 ###############################################################################
 # 4. README
 ###############################################################################
-cat > "$stage/srv6-mup-cml2/README.md" <<EOF
+cat > "$stage/srv6-mup-bundle/README.md" <<EOF
 # SRv6 Mobile User Plane (RFC 9433) for Ubuntu 24.04 LTS
 
 A self-built kernel + iproute2 deb bundle that adds RFC 9433 SRv6 MUP
-support (six behaviors, §6.2-§6.7) to a CML2 Ubuntu 24.04 LTS node.
+support (six behaviors, §6.2-§6.7) to any Ubuntu 24.04 LTS host.
 
 Built from the upstream-bound patch series:
 
@@ -161,7 +161,7 @@ EOF
 # 5. Pack
 ###############################################################################
 echo "==> Packing $OUT ..."
-( cd "$stage" && tar czf "$OUT" srv6-mup-cml2/ )
+( cd "$stage" && tar czf "$OUT" srv6-mup-bundle/ )
 
 ls -la "$OUT"
 echo

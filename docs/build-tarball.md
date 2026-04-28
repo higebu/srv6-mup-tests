@@ -1,11 +1,13 @@
-# Building the CML2-distribution tarball
+# Building the SRv6 MUP distribution tarball
 
-`scripts/build_cml2_tarball.sh` produces
-`~/srv6-mup-cml2.tar.gz`, the bundle used to install the SRv6 MUP
-patches on a CML2 Ubuntu 24.04 LTS node:
+`scripts/build_tarball.sh` produces
+`~/srv6-mup-bundle.tar.gz`, a `.deb` bundle that installs the SRv6 MUP
+kernel + iproute2 patches on any Ubuntu 24.04 LTS host (bare metal,
+LXC containers, EC2, lab nodes — anywhere
+`apt-get install -y ./*.deb` works):
 
 ```
-srv6-mup-cml2/
+srv6-mup-bundle/
 ├── linux-image-...srv6mup-NN_amd64.deb
 ├── linux-headers-...srv6mup-NN_amd64.deb
 ├── linux-libc-dev_...srv6mup-NN_amd64.deb
@@ -25,9 +27,9 @@ srv6-mup-cml2/
   `~/ghq/github.com/higebu/linux`, you're fine).
 - `docker` — the iproute2 deb is built inside an Ubuntu 24.04 (Noble)
   container so the resulting binary links against `libc6 (>= 2.38)`,
-  matching CML2 Ubuntu 24.04 nodes.
+  matching Ubuntu 24.04 LTS targets.
 - A reference Ubuntu iproute2 deb pair to crib the maintainer scripts /
-  conffiles list from. The previous bundle in `~/srv6-mup-cml2/` is fine;
+  conffiles list from. The previous bundle in `~/srv6-mup-bundle/` is fine;
   see `REF_IPROUTE2_DEB` / `REF_IPROUTE2_DOC_DEB` env vars below.
 
 ### One-time Docker image setup
@@ -49,10 +51,10 @@ docker rm srv6mup-build-noble
 The defaults match the workspace layout used during this project:
 
 ```bash
-~/ghq/github.com/higebu/srv6-mup-tests/scripts/build_cml2_tarball.sh
+~/ghq/github.com/higebu/srv6-mup-tests/scripts/build_tarball.sh
 ```
 
-Output: `~/srv6-mup-cml2.tar.gz` (~28 MB) plus a printout of its file
+Output: `~/srv6-mup-bundle.tar.gz` (~28 MB) plus a printout of its file
 list.
 
 ### Customising
@@ -69,15 +71,15 @@ All knobs are env vars (defaults in parentheses):
                           deb version `7.0.0-srv6mup10`)
 - `REF_IPROUTE2_DEB`   — path/glob to a previous iproute2 deb to copy
                           DEBIAN/control / md5sums / postinst from
-                          (default `~/srv6-mup-cml2/iproute2_*.deb`)
+                          (default `~/srv6-mup-bundle/iproute2_*.deb`)
 - `REF_IPROUTE2_DOC_DEB` — same idea for the iproute2-doc deb
-- `OUT`                — output tarball path (`~/srv6-mup-cml2.tar.gz`)
+- `OUT`                — output tarball path (`~/srv6-mup-bundle.tar.gz`)
 
 For example, to bump the version tags:
 
 ```bash
 KERNEL_PKG_VER=7.0.0-srv6mup-14 IPROUTE2_PKG_TAG=srv6mup11 \
-    ~/ghq/github.com/higebu/srv6-mup-tests/scripts/build_cml2_tarball.sh
+    ~/ghq/github.com/higebu/srv6-mup-tests/scripts/build_tarball.sh
 ```
 
 ## How the iproute2 deb is built
@@ -102,15 +104,15 @@ container and:
 The reference deb's maintainer-script content (`postinst`, `templates`,
 …) is intentionally reused unchanged so the resulting package looks
 identical to a stock Ubuntu deb to apt — `apt-get install -y ./*.deb`
-on the CML2 node Just Works without prompting.
+on the target node Just Works without prompting.
 
 ## Why Docker for iproute2
 
 The `srv6-mup` branch lives in `~/ghq/github.com/higebu/iproute2` and is
 typically built on the host (Debian 12 = bookworm = libc6 2.36).
-CML2's Ubuntu 24.04 image is Noble (= libc6 2.38), and dpkg refuses to
-install a binary that `Depends: libc6 (>= 2.38)` against a 2.36 host or
-vice versa. Building inside an `ubuntu:24.04` image side-steps the
+The Ubuntu 24.04 LTS target is Noble (= libc6 2.38), and dpkg refuses
+to install a binary that `Depends: libc6 (>= 2.38)` against a 2.36 host
+or vice versa. Building inside an `ubuntu:24.04` image side-steps the
 mismatch.
 
 The kernel deb does not have this constraint — `make bindeb-pkg`
@@ -120,7 +122,7 @@ directly on the host.
 ## Quick sanity-check after rebuilding
 
 ```bash
-tar tzf ~/srv6-mup-cml2.tar.gz | sort
+tar tzf ~/srv6-mup-bundle.tar.gz | sort
 ```
 
 should list 5 \*.deb files, README.md, and 7 selftest files (6 scripts +

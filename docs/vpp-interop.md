@@ -18,8 +18,8 @@ On the host:
   sudo apt-get update
   sudo apt-get install -y vpp vpp-plugin-core
   ```
-  (the `bookworm` suite tag also matches Debian-flavoured CML2 nodes;
-  Ubuntu 24.04 hosts should use `noble` instead)
+  (the `bookworm` suite tag is for Debian 12 hosts; Ubuntu 24.04 LTS
+  hosts should use `noble` instead)
 - `pip install --user virtme-ng` or `apt install virtme-ng`
 - `apt install python3-scapy tcpdump wireshark-common`
   (mergecap / tshark)
