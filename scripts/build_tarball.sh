@@ -1,12 +1,19 @@
 #!/bin/bash
 #
 # Build the SRv6 MUP distribution tarball ~/srv6-mup-bundle.tar.gz from:
-#   - Linux kernel at  $LINUX  (default ~/ghq/github.com/higebu/linux)
+#   - Linux kernel at  $LINUX  (default: sibling ../linux of this repo)
 #       built with `make bindeb-pkg` to produce linux-image / linux-headers /
 #       linux-libc-dev .deb
-#   - iproute2  at  $IPROUTE2  (default ~/ghq/github.com/higebu/iproute2)
+#   - iproute2  at  $IPROUTE2  (default: sibling ../iproute2 of this repo)
 #       repackaged inside an Ubuntu Noble Docker container so the resulting
 #       deb satisfies Ubuntu 24.04 LTS (libc6 >= 2.38) targets.
+#
+# The default layout assumes:
+#   <parent>/linux          (kernel source)
+#   <parent>/iproute2       (iproute2 source)
+#   <parent>/srv6-mup-tests (this repo)
+# i.e. all three trees are siblings under a common parent.  Override
+# $LINUX / $IPROUTE2 if your layout differs.
 #   - selftests from $LINUX/tools/testing/selftests/net/srv6_*_test.sh
 #       (plus lib.sh and lib/sh/defer.sh that they source)
 #
@@ -29,8 +36,10 @@
 
 set -euo pipefail
 
-LINUX=${LINUX:-/home/yuya/ghq/github.com/higebu/linux}
-IPROUTE2=${IPROUTE2:-/home/yuya/ghq/github.com/higebu/iproute2}
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)
+LINUX=${LINUX:-$ROOT/linux}
+IPROUTE2=${IPROUTE2:-$ROOT/iproute2}
 DOCKER_IMG=${DOCKER_IMG:-srv6mup-build:noble}
 KERNEL_PKG_VER=${KERNEL_PKG_VER:-7.0.0-srv6mup-13}
 IPROUTE2_PKG_TAG=${IPROUTE2_PKG_TAG:-srv6mup10}
@@ -38,7 +47,6 @@ OUT=${OUT:-$HOME/srv6-mup-bundle.tar.gz}
 REF_IPROUTE2_DEB=${REF_IPROUTE2_DEB:-$HOME/srv6-mup-bundle/iproute2_*.deb}
 REF_IPROUTE2_DOC_DEB=${REF_IPROUTE2_DOC_DEB:-$HOME/srv6-mup-bundle/iproute2-doc_*.deb}
 
-HERE=$(cd "$(dirname "$0")" && pwd)
 INNER_BUILD=$HERE/_build_iproute2_inside_docker.sh
 
 stage=$(mktemp -d)

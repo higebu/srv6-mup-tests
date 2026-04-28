@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
-export PATH=/home/yuya/ghq/github.com/higebu/iproute2/ip:$PATH
+HERE=$(cd "$(dirname "$0")" && pwd)
+export PATH="$HERE/../../iproute2/ip:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null
 mkdir -p /run/vpp /tmp/vpp
 

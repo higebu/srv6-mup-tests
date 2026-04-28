@@ -2,7 +2,8 @@
 # Linux End.M.GTP4.E (decap) ↔ VPP sr policy + plain encap (ingress)
 #   gnb --(IPv4 GTP-U)--> VPP --(SRv6)--> srgw (End.M.GTP4.E) --(IPv4 GTP-U)--> dn
 set -e
-export PATH=/home/yuya/ghq/github.com/higebu/iproute2/ip:$PATH
+HERE=$(cd "$(dirname "$0")" && pwd)
+export PATH="$HERE/../../iproute2/ip:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null
 mkdir -p /run/vpp /tmp/vpp
 

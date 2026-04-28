@@ -9,7 +9,8 @@
 # IPv6 DA の透過保持)。VPP の End (RFC 8986) で SL を decrement させ、
 # outer dst を SRH[0] = D に巻き戻して最終ネームスペースに届ける。
 set -e
-export PATH=/home/yuya/ghq/github.com/higebu/iproute2/ip:$PATH
+HERE=$(cd "$(dirname "$0")" && pwd)
+export PATH="$HERE/../../iproute2/ip:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null
 mkdir -p /run/vpp /tmp/vpp
 

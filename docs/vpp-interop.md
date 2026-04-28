@@ -24,15 +24,17 @@ On the host:
 - `apt install python3-scapy tcpdump wireshark-common`
   (mergecap / tshark)
 
-Source trees:
+Source trees (default sibling layout — adjust `$ROOT` if your layout
+differs):
 
-- `~/ghq/github.com/higebu/linux` — built (`make -j$(nproc) bzImage`).
-- `~/ghq/github.com/higebu/iproute2` — built (`make -j$(nproc)`).
+- `<parent>/linux` — built (`make -j$(nproc) bzImage`).
+- `<parent>/iproute2` — built (`make -j$(nproc)`).
 
 ## Run all five scenarios
 
 ```bash
-PCAP_DIR=/home/yuya/ghq/github.com/higebu/srv6-mup-tests/pcaps
+ROOT=$(cd "$(dirname "$0")/.." && pwd)   # parent of linux/ iproute2/ srv6-mup-tests/
+PCAP_DIR=$ROOT/srv6-mup-tests/pcaps
 rm -f $PCAP_DIR/*.pcap
 
 for s in vpp_interop_h_m_gtp4_d.sh \
@@ -42,9 +44,9 @@ for s in vpp_interop_h_m_gtp4_d.sh \
          vpp_interop_end_m_gtp6_d_di.sh; do
   for try in 1 2; do
     script -q -c "vng -m 4G --rwdir=$PCAP_DIR \
-      --run /home/yuya/ghq/github.com/higebu/linux --user root \
+      --run $ROOT/linux --user root \
       -- env PCAP_OUT=$PCAP_DIR \
-         /home/yuya/ghq/github.com/higebu/srv6-mup-tests/scripts/$s" \
+         $ROOT/srv6-mup-tests/scripts/$s" \
       /tmp/run-$s.log >/dev/null 2>&1
     if grep -q 'VPP-INTEROP' /tmp/run-$s.log; then break; fi
   done
@@ -82,11 +84,12 @@ the scenario direction; see [`topology.md`](topology.md).
 ## Run a single scenario with full output
 
 ```bash
-PCAP_DIR=/home/yuya/ghq/github.com/higebu/srv6-mup-tests/pcaps
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+PCAP_DIR=$ROOT/srv6-mup-tests/pcaps
 script -q -c "vng -m 4G --rwdir=$PCAP_DIR \
-  --run /home/yuya/ghq/github.com/higebu/linux --user root \
+  --run $ROOT/linux --user root \
   -- env PCAP_OUT=$PCAP_DIR \
-     /home/yuya/ghq/github.com/higebu/srv6-mup-tests/scripts/vpp_interop_end_m_gtp6_d.sh" \
+     $ROOT/srv6-mup-tests/scripts/vpp_interop_end_m_gtp6_d.sh" \
   /tmp/single.log
 less /tmp/single.log                         # VPP trace / errors / verify
 tshark -V -r $PCAP_DIR/end_m_gtp6_d.pcap     # full packet dissection
