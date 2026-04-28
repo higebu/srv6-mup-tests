@@ -54,10 +54,11 @@ srv6-mup-tests/
 
 ### Prerequisites
 
-1. The `srv6-mup` Linux kernel built at `~/ghq/github.com/higebu/linux`
-   (`make -j$(nproc) bzImage` succeeded; kernel.release starts with
+1. The `srv6-mup` Linux kernel checked out and built at `<parent>/linux`
+   (where `<parent>` is the directory holding this repo's checkout;
+   `make -j$(nproc) bzImage` succeeded; kernel.release starts with
    `7.0.0-srv6-mup-...`).
-2. The `srv6-mup` iproute2 built at `~/ghq/github.com/higebu/iproute2`
+2. The `srv6-mup` iproute2 checked out and built at `<parent>/iproute2`
    (`make -j$(nproc)` succeeded; `./ip/ip route help` shows the MUP
    actions).
 3. On the host: `vpp` + `vpp-plugin-core` (25.10 from the FDio
@@ -71,10 +72,14 @@ See [`docs/selftests.md`](docs/selftests.md) for the full walk-through.
 TL;DR:
 
 ```bash
-script -q -c "vng -m 4G --run /home/yuya/ghq/github.com/higebu/linux --user root \
+# Default layout: linux/, iproute2/, and srv6-mup-tests/ are siblings
+# under the same parent.  Adjust ROOT if your layout differs.
+ROOT=$(cd "$(dirname "$0")/.." && pwd)   # or just: ROOT=~/ghq/github.com/higebu
+
+script -q -c "vng -m 4G --run $ROOT/linux --user root \
   -- bash -c 'mount -t tmpfs tmpfs /tmp; \
-              export PATH=/home/yuya/ghq/github.com/higebu/iproute2/ip:\$PATH; \
-              cd /home/yuya/ghq/github.com/higebu/linux/tools/testing/selftests/net && \
+              export PATH=$ROOT/iproute2/ip:\$PATH; \
+              cd $ROOT/linux/tools/testing/selftests/net && \
               for t in srv6_end_m_gtp4_e_test.sh srv6_end_m_gtp6_d_test.sh \
                        srv6_end_m_gtp6_d_di_test.sh srv6_end_m_gtp6_e_test.sh \
                        srv6_end_map_test.sh srv6_h_m_gtp4_d_test.sh; do
@@ -100,7 +105,8 @@ See [`docs/vpp-interop.md`](docs/vpp-interop.md) for the full walk-through.
 TL;DR:
 
 ```bash
-PCAP_DIR=/home/yuya/ghq/github.com/higebu/srv6-mup-tests/pcaps
+ROOT=$(cd "$(dirname "$0")/.." && pwd)   # parent of linux/ iproute2/ srv6-mup-tests/
+PCAP_DIR=$ROOT/srv6-mup-tests/pcaps
 rm -f $PCAP_DIR/*.pcap
 
 for s in vpp_interop_h_m_gtp4_d.sh \
@@ -109,9 +115,9 @@ for s in vpp_interop_h_m_gtp4_d.sh \
          vpp_interop_end_m_gtp6_e.sh \
          vpp_interop_end_m_gtp6_d_di.sh; do
   script -q -c "vng -m 4G --rwdir=$PCAP_DIR \
-    --run /home/yuya/ghq/github.com/higebu/linux --user root \
+    --run $ROOT/linux --user root \
     -- env PCAP_OUT=$PCAP_DIR \
-    /home/yuya/ghq/github.com/higebu/srv6-mup-tests/scripts/$s" \
+    $ROOT/srv6-mup-tests/scripts/$s" \
     /tmp/run-$s.log >/dev/null 2>&1
   grep -E 'VPP-INTEROP' /tmp/run-$s.log | tail -1
 done

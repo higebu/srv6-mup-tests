@@ -7,17 +7,22 @@ no VPP is required.
 
 ## Prerequisites
 
-- Linux source: `~/ghq/github.com/higebu/linux` built (`make -j$(nproc) bzImage`).
-- iproute2 source: `~/ghq/github.com/higebu/iproute2` built (`make -j$(nproc)`).
+- Linux source: `<parent>/linux` built (`make -j$(nproc) bzImage`).
+- iproute2 source: `<parent>/iproute2` built (`make -j$(nproc)`).
 - On the host: `vng` (virtme-ng), `python3-scapy`, `tcpdump`.
+
+The default layout assumes `linux/`, `iproute2/`, and
+`srv6-mup-tests/` are siblings under a common `<parent>` directory.
 
 ## Run all six in one VM session
 
 ```bash
-script -q -c "vng -m 4G --run /home/yuya/ghq/github.com/higebu/linux --user root -- bash -c '
+ROOT=$(cd "$(dirname "$0")/.." && pwd)   # parent of linux/ iproute2/ srv6-mup-tests/
+
+script -q -c "vng -m 4G --run $ROOT/linux --user root -- bash -c '
   mount -t tmpfs tmpfs /tmp
-  export PATH=/home/yuya/ghq/github.com/higebu/iproute2/ip:\$PATH
-  cd /home/yuya/ghq/github.com/higebu/linux/tools/testing/selftests/net
+  export PATH=$ROOT/iproute2/ip:\$PATH
+  cd $ROOT/linux/tools/testing/selftests/net
   for t in srv6_end_m_gtp4_e_test.sh \
            srv6_end_m_gtp6_d_test.sh \
            srv6_end_m_gtp6_d_di_test.sh \
@@ -39,7 +44,7 @@ grep -E '^==|TEST:' /tmp/selftests.log
 - **`vng -m 4G`** — kselftest defaults work in 1 GB, but we share this
   invocation with the VPP interop tests (which need ~3 GB), so 4 GB is
   used everywhere for consistency.
-- **`vng --run /home/yuya/ghq/github.com/higebu/linux`** — pass the
+- **`vng --run $ROOT/linux`** — pass the
   freshly-built `bzImage` (and the matching `mods/`) of the `srv6-mup`
   branch instead of the host's installed kernel.
 - **`--user root`** — selftests use `setup_ns`, which needs
@@ -77,10 +82,11 @@ TEST: H.M.GTP4.D [PASS]
 ## Running a single selftest with a shell trace
 
 ```bash
-script -q -c "vng -m 4G --run /home/yuya/ghq/github.com/higebu/linux --user root -- bash -c '
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+script -q -c "vng -m 4G --run $ROOT/linux --user root -- bash -c '
   mount -t tmpfs tmpfs /tmp
-  export PATH=/home/yuya/ghq/github.com/higebu/iproute2/ip:\$PATH
-  cd /home/yuya/ghq/github.com/higebu/linux/tools/testing/selftests/net
+  export PATH=$ROOT/iproute2/ip:\$PATH
+  cd $ROOT/linux/tools/testing/selftests/net
   bash -x srv6_end_m_gtp6_d_test.sh'" /tmp/sft-debug.log
 less /tmp/sft-debug.log
 ```
