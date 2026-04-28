@@ -27,7 +27,7 @@ srv6-mup-tests/
 │   ├── selftests.md           -- how to run the kernel selftests under vng
 │   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios
 │   ├── topology.md            -- per-scenario netns + veth topology
-│   └── build-tarball.md       -- how to rebuild the CML2-distribution tarball
+│   └── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
 ├── scripts/                   -- VPP interop scripts, named after the
 │   │                              Linux behavior under test (1:1 with
 │   │                              the in-tree kernel selftests).  The
@@ -162,8 +162,9 @@ implement either; they are covered by the kernel selftests only.
 
 - RFC 9433 — <https://www.rfc-editor.org/rfc/rfc9433>
 - VPP `srv6-mobile` plugin — `~/vpp/src/plugins/srv6-mobile/`
-- CML2 distribution tarball (kernel + iproute2 .deb's + selftests) —
-  `~/srv6-mup-cml2.tar.gz` (rebuild with
-  [`scripts/build_cml2_tarball.sh`](scripts/build_cml2_tarball.sh);
+- SRv6 MUP `.deb` bundle tarball (kernel + iproute2 debs + selftests) —
+  `~/srv6-mup-bundle.tar.gz`, installable on any Ubuntu 24.04 LTS host
+  (rebuild with
+  [`scripts/build_tarball.sh`](scripts/build_tarball.sh);
   see [`docs/build-tarball.md`](docs/build-tarball.md) for the full
   procedure)
