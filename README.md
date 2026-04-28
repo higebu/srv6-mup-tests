@@ -30,12 +30,14 @@ srv6-mup-tests/
 │   └── build-tarball.md       -- how to rebuild the CML2-distribution tarball
 ├── scripts/                   -- VPP interop scripts, named after the
 │   │                              Linux behavior under test (1:1 with
-│   │                              the in-tree kernel selftests)
-│   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D    ↔ VPP end.m.gtp4.e
-│   ├── vpp_interop_end_m_gtp4_e.sh      -- Linux End.M.GTP4.E  ↔ VPP sr policy + plain encap
-│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D  ↔ VPP end.m.gtp6.e
-│   ├── vpp_interop_end_m_gtp6_e.sh      -- Linux End.M.GTP6.E  ↔ VPP end.m.gtp6.d (drop-in)
-│   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di ↔ VPP End (RFC 8986)
+│   │                              the in-tree kernel selftests).  The
+│   │                              arrows below show the data-plane
+│   │                              direction (encap-side -> decap-side).
+│   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (encap)  -> VPP end.m.gtp4.e (decap)
+│   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP sr policy + plain encap -> Linux End.M.GTP4.E (decap)
+│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (encap) -> VPP end.m.gtp6.e (decap)
+│   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (encap) -> Linux End.M.GTP6.E (decap)
+│   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (encap) -> VPP End (RFC 8986 transit)
 ├── pcaps/                     -- merged pcaps from a recent run
 │                                 (test ingress + SR-domain wire + test egress)
 └── logs/                      -- runtime logs (.gitignore'd)
