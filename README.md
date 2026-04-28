@@ -31,13 +31,20 @@ srv6-mup-tests/
 ├── scripts/                   -- VPP interop scripts, named after the
 │   │                              Linux behavior under test (1:1 with
 │   │                              the in-tree kernel selftests).  The
-│   │                              arrows below show the data-plane
-│   │                              direction (encap-side -> decap-side).
-│   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (encap)  -> VPP end.m.gtp4.e (decap)
-│   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP sr policy + plain encap -> Linux End.M.GTP4.E (decap)
-│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (encap) -> VPP end.m.gtp6.e (decap)
-│   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (encap) -> Linux End.M.GTP6.E (decap)
-│   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (encap) -> VPP End (RFC 8986 transit)
+│   │                              "(GTP-U -> SRv6)" / "(SRv6 -> GTP-U)"
+│   │                              annotations show the protocol
+│   │                              transformation each end performs;
+│   │                              note the RFC 9433 mnemonic — the "D"
+│   │                              suffix means GTP-U-Decap (= produces
+│   │                              SRv6) and the "E" suffix means
+│   │                              GTP-U-Encap (= produces GTP-U from
+│   │                              SRv6), which is the *opposite* of the
+│   │                              SR-domain-side encap/decap reading.
+│   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
+│   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
+│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6) -> VPP end.m.gtp6.e (SRv6 -> GTP-U)
+│   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (GTP-U -> SRv6) -> Linux End.M.GTP6.E (SRv6 -> GTP-U)
+│   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (GTP-U -> SRv6 inline) -> VPP End (RFC 8986 transit)
 ├── pcaps/                     -- merged pcaps from a recent run
 │                                 (test ingress + SR-domain wire + test egress)
 └── logs/                      -- runtime logs (.gitignore'd)
@@ -137,13 +144,15 @@ Expected:
 
 ### VPP 25.10 interop scenarios
 
+RFC 9433 action-name mnemonic: **D** = GTP-U **D**ecap (output is SRv6), **E** = GTP-U **E**ncap (output is GTP-U).  Below "GTP-U → SRv6" and "SRv6 → GTP-U" describe what each end actually emits.
+
 | Script | Linux side | VPP side |
 |---|---|---|
-| `vpp_interop_h_m_gtp4_d.sh` | H.M.GTP4.D (encap, §6.7) | end.m.gtp4.e (decap, §6.6) |
-| `vpp_interop_end_m_gtp4_e.sh` | End.M.GTP4.E (decap, §6.6) | sr policy + plain encap |
-| `vpp_interop_end_m_gtp6_d.sh` | End.M.GTP6.D (encap, §6.3 + §6.5 Note) | end.m.gtp6.e (decap, §6.5) |
-| `vpp_interop_end_m_gtp6_e.sh` | End.M.GTP6.E (decap, §6.5) | end.m.gtp6.d drop-in (encap, §6.3) |
-| `vpp_interop_end_m_gtp6_d_di.sh` | End.M.GTP6.D.Di (encap, §6.4) | End (RFC 8986) |
+| `vpp_interop_h_m_gtp4_d.sh` | H.M.GTP4.D §6.7 (GTP-U → SRv6) | end.m.gtp4.e §6.6 (SRv6 → GTP-U) |
+| `vpp_interop_end_m_gtp4_e.sh` | End.M.GTP4.E §6.6 (SRv6 → GTP-U) | sr policy + plain encap (IPv4 → SRv6) |
+| `vpp_interop_end_m_gtp6_d.sh` | End.M.GTP6.D §6.3 + §6.5 Note (GTP-U → SRv6) | end.m.gtp6.e §6.5 (SRv6 → GTP-U) |
+| `vpp_interop_end_m_gtp6_e.sh` | End.M.GTP6.E §6.5 (SRv6 → GTP-U) | end.m.gtp6.d drop-in §6.3 (GTP-U → SRv6 inline) |
+| `vpp_interop_end_m_gtp6_d_di.sh` | End.M.GTP6.D.Di §6.4 (GTP-U → SRv6 inline) | End (RFC 8986 transit) |
 
 End.MAP (§6.2) and End.Limit (§6.8) cannot be exercised against VPP
 because the VPP `srv6-mobile` plugin (Arrcus contribution) does not
