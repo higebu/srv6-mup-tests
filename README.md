@@ -12,7 +12,11 @@ This repo holds:
    [virtme-ng](https://github.com/arighi/virtme-ng).
 2. Five VPP 25.10 interop scenarios (one per Linux MUP behavior under
    test), with merged pcaps captured at three points along the path
-   (`gNB ingress`, `SR-domain wire`, `egress`).
+   (test ingress, SR-domain wire, test egress).  The role each end
+   plays in 3GPP terms (gNB / MUP-PE upstream peer) depends on the
+   scenario direction (UL D-family vs. DL E-family); see
+   [`docs/topology.md`](docs/topology.md) for the per-scenario role
+   mapping.
 
 ## Layout
 
