@@ -37,7 +37,7 @@ srv6-mup-tests/
 │   ├── vpp_interop_end_m_gtp6_e.sh      -- Linux End.M.GTP6.E  ↔ VPP end.m.gtp6.d (drop-in)
 │   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di ↔ VPP End (RFC 8986)
 ├── pcaps/                     -- merged pcaps from a recent run
-│                                 (input + SR-domain wire + egress)
+│                                 (test ingress + SR-domain wire + test egress)
 └── logs/                      -- runtime logs (.gitignore'd)
 ```
 

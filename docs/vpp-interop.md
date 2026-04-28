@@ -74,8 +74,10 @@ startup glitch when several VMs are spawned back-to-back.
 ```
 
 On success, each scenario writes a single merged pcap into `$PCAP_DIR`
-that contains the three capture points (gNB ingress, SR-domain wire,
-egress) in time order — `mergecap`-joined inside the script.
+that contains the three capture points (test ingress, SR-domain wire,
+test egress) in time order — `mergecap`-joined inside the script.
+The 3GPP role each end plays (gNB / MUP-PE upstream peer) depends on
+the scenario direction; see [`topology.md`](topology.md).
 
 ## Run a single scenario with full output
 

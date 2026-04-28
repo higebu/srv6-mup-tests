@@ -79,7 +79,7 @@ flowchart LR
     classDef veth fill:#fff,stroke:#999,stroke-dasharray: 4 2
     classDef tap fill:#fed,stroke:#a60,font-style:italic
 
-    subgraph GNB["gnb netns"]
+    subgraph GNB["gnb netns<br/><i>(plays gNB = UL GTP-U source)</i>"]
         direction TB
         gnb_g[veth-g]:::veth
     end
@@ -96,14 +96,14 @@ flowchart LR
         root_f[veth-f]:::veth
     end
 
-    subgraph FINAL["dn netns"]
+    subgraph FINAL["dn netns<br/><i>(plays far-side GTP peer<br/>= MUP-PE upstream / UE network)</i>"]
         direction TB
         final_f[veth-f-dn]:::veth
     end
 
-    gnb_g <-- "1: input GTP-U" --> srgw_g
+    gnb_g <-- "1: UL ingress GTP-U" --> srgw_g
     srgw_e <== "2: SR-domain wire (SRv6)" ==> root_e
-    root_f <-- "3: post-decap output" --> final_f
+    root_f <-- "3: post-decap egress" --> final_f
 
     cap1>tcpdump on veth-g]:::tap
     cap2>tcpdump on veth-e-vpp]:::tap
@@ -118,10 +118,12 @@ flowchart LR
 
 tcpdump is run at three points:
 
-- gnb: `veth-g` — input GTP-U as the gNB sees it.
+- gnb: `veth-g` — test ingress GTP-U as the harness's gNB-role end sees
+  it.  In these UL D-family scenarios the gnb netns is acting as gNB.
 - root ns: `veth-e-vpp` — SR-domain wire (the emitted SRv6 packet).
-- dn ns: `veth-f-dn` — output (post-decap GTP-U, or, for D.Di, the
-  SRv6 packet after `End` processing).
+- dn ns: `veth-f-dn` — test egress (post-decap GTP-U seen by the
+  far-side GTP peer, or — for D.Di — the SRv6 packet after VPP `End`
+  processing).
 
 `mergecap -w merged.pcap input.pcap srv6.pcap dn.pcap` joins the
 three captures in time order so a single pcap shows the entire path.
@@ -136,7 +138,7 @@ flowchart LR
     classDef veth fill:#fff,stroke:#999,stroke-dasharray: 4 2
     classDef tap fill:#fed,stroke:#a60,font-style:italic
 
-    subgraph GNB["gnb netns"]
+    subgraph GNB["gnb netns<br/><i>(plays MUP-PE upstream peer<br/>= UE-network DL source)</i>"]
         direction TB
         gnb_g[veth-g-gnb]:::veth
     end
@@ -153,14 +155,14 @@ flowchart LR
         srgw_x[veth-x]:::veth
     end
 
-    subgraph EGR["dn netns"]
+    subgraph EGR["dn netns<br/><i>(plays gNB-side DL receiver)</i>"]
         direction TB
         egr_x[veth-x-dn]:::veth
     end
 
-    gnb_g <-- "1: input GTP-U" --> root_g
+    gnb_g <-- "1: DL ingress (IPv4 or SRv6 toward MUP-PE)" --> root_g
     root_e <== "2: SR-domain wire (SRv6)" ==> srgw_e
-    srgw_x <-- "3: post-decap output" --> egr_x
+    srgw_x <-- "3: post-decap GTP-U toward gNB" --> egr_x
 
     cap1>tcpdump on veth-g-gnb]:::tap
     cap2>tcpdump on veth-e-vpp]:::tap
