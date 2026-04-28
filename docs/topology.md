@@ -11,16 +11,18 @@ The same address plan is reused across all scenarios:
 | Prefix | Purpose |
 |---|---|
 | `2001:db8:1::/64` | gnb ↔ srgw IPv6 link |
-| `2001:db8:2::/64` | srgw ↔ VPP IPv6 link (SR-domain ingress side) |
-| `2001:db8:3::/64` | far-side GTP-peer link (IPv6, post-decap observation) |
-| `2001:db8:e::/88` | End.M.GTP6.E SID locator |
-| `2001:db8:f::/56` (IPv4 family) | End.M.GTP4.E / H.M.GTP4.D locator (`v4_mask_len 32`, `sr_prefix_len 56`) |
-| `2001:db8:f::/48` (IPv6 family) | End.M.GTP6.D routing prefix |
-| `2001:db8:5::1/128` | VPP SR Policy BSID (encap-side scenarios) |
-| `2001:db8:6::/64` | VPP `end.m.gtp6.d` localsid prefix |
-| `10.0.0.0/24` | gnb ↔ srgw IPv4 link |
-| `10.99.0.0/24` | far-side GTP-peer IPv4 address space (End.M.GTP4.E DA recovery target) |
-| `10.0.1.0/24` | far-side GTP-peer IPv4 link (post-decap observation) |
+| `2001:db8:2::/64` | srgw ↔ VPP IPv6 link (SR-domain side) |
+| `2001:db8:3::/64` | VPP ↔ dn IPv6 link (far-side observation) |
+| `2001:db8::/32` | End.M.GTP4.E / H.M.GTP4.D SID locator (`v4_mask_len 32`, `sr_prefix_len 32`) — used by `vpp_interop_h_m_gtp4_d.sh` and `vpp_interop_end_m_gtp4_e.sh` |
+| `2001:db8:f::/64` | End.M.GTP6.D / End.M.GTP6.D.Di routing prefix (also t.m.gtp6.e SID prefix on the egress side) — used by `vpp_interop_end_m_gtp6_{d,d_di,e}.sh` |
+| `2001:db8:e::/64` | VPP `end.m.gtp6.e` localsid prefix in `vpp_interop_end_m_gtp6_d.sh` |
+| `2001:db8:e::1/128` | VPP plain `End` (RFC 8986) localsid in `vpp_interop_end_m_gtp6_d_di.sh` |
+| `2001:db8:6::/64` | VPP `end.m.gtp6.d` localsid prefix in `vpp_interop_end_m_gtp6_e.sh` |
+| `2001:db8:5::1/128` | VPP `t.m.gtp4.d` outer BSID in `vpp_interop_end_m_gtp4_e.sh` |
+| `2001:db8:dead::1/128` | VPP "実体側" SR policy transit segment in `vpp_interop_end_m_gtp4_e.sh` (caught by srgw's plain `End` so SL drops to 0 before End.M.GTP4.E fires) |
+| `10.0.0.0/24` | gnb ↔ srgw (or gnb ↔ VPP) IPv4 link |
+| `10.99.0.0/24` | far-side IPv4 (encoded in End.M.GTP4.E / H.M.GTP4.D SID's IPv4 DA portion) |
+| `10.0.1.0/24` | far-side IPv4 link (post-decap observation) |
 
 ## SRv6 MUP architecture mapping
 
@@ -36,27 +38,30 @@ UE ── MUP-PE ── (SR-domain, SRv6) ── MUP-GW ── gNB
   GTP-U (toward gNB on N3) and SRv6 (toward MUP-PE).
 
 The RFC 9433 §6 behaviors live at the **MUP-GW** position because they
-bridge GTP-U and SRv6:
+bridge GTP-U and SRv6.  Note the action-name mnemonic — the suffix is
+named after what the function does to the **GTP-U** header, which is
+the opposite of what it does to the **SRv6** header:
 
-- D-family (encap): `H.M.GTP4.D`, `End.M.GTP6.D`, `End.M.GTP6.D.Di` —
-  consume GTP-U from gNB, emit SRv6 into the SR-domain (UL).
-- E-family (decap): `End.M.GTP4.E`, `End.M.GTP6.E` —
-  consume SRv6, emit GTP-U toward gNB (DL).
+- **D**-family (= GTP-U **D**ecap → SRv6 produced): `H.M.GTP4.D`,
+  `End.M.GTP6.D`, `End.M.GTP6.D.Di`.  These consume GTP-U from gNB
+  and emit SRv6 into the SR-domain (UL).
+- **E**-family (= GTP-U **E**ncap ← SRv6 consumed): `End.M.GTP4.E`,
+  `End.M.GTP6.E`.  These consume SRv6 and emit GTP-U toward gNB (DL).
 
 In these interop scenarios both ends of the SR-domain run a §6 behavior
 (both are **MUP-GW** instances). The framework therefore exercises a
 "MUP-GW ↔ MUP-GW" GTP-preserving SR transit; a real deployment would
 typically have one MUP-GW and one MUP-PE.
 
-Per scenario:
+Per scenario (column "Linux/VPP transform" reads "what the node emits"):
 
-| Script | Linux role | VPP role | Direction | gnb netns plays | dn netns plays |
+| Script | Linux side | VPP side | Direction | gnb netns plays | dn netns plays |
 |---|---|---|---|---|---|
-| `vpp_interop_h_m_gtp4_d.sh` | MUP-GW (encap, §6.7) | MUP-GW (decap, §6.6) | UL (4G) | gNB / UL source | far-side GTP peer |
-| `vpp_interop_end_m_gtp4_e.sh` | MUP-GW (decap, §6.6) | MUP-PE (plain SR encap workaround) | DL (4G) | DL source / far peer | gNB-side GTP receiver |
-| `vpp_interop_end_m_gtp6_d.sh` | MUP-GW (encap, §6.3) | MUP-GW (decap, §6.5) | UL (5G) | gNB / UL source | far-side GTP peer |
-| `vpp_interop_end_m_gtp6_e.sh` | MUP-GW (decap, §6.5) | MUP-GW (encap, §6.3 drop-in) | DL (5G) | DL source / far peer | gNB-side GTP receiver |
-| `vpp_interop_end_m_gtp6_d_di.sh` | MUP-GW (encap drop-in, §6.4) | MUP-PE (RFC 8986 End) | UL drop-in | gNB / UL source | next-hop SR endpoint |
+| `vpp_interop_h_m_gtp4_d.sh` | H.M.GTP4.D §6.7 (GTP-U → SRv6) | end.m.gtp4.e §6.6 (SRv6 → GTP-U) | UL (4G) | gNB / UL source | far-side GTP peer |
+| `vpp_interop_end_m_gtp4_e.sh` | End.M.GTP4.E §6.6 (SRv6 → GTP-U) | sr policy + plain encap (IPv4 → SRv6) | DL (4G) | DL source (MUP-PE upstream peer) | gNB-side GTP receiver |
+| `vpp_interop_end_m_gtp6_d.sh` | End.M.GTP6.D §6.3 (GTP-U → SRv6) | end.m.gtp6.e §6.5 (SRv6 → GTP-U) | UL (5G) | gNB / UL source | far-side GTP peer |
+| `vpp_interop_end_m_gtp6_e.sh` | End.M.GTP6.E §6.5 (SRv6 → GTP-U) | end.m.gtp6.d drop-in §6.3 (GTP-U → SRv6 inline) | DL (5G) | DL source (MUP-PE upstream peer) | gNB-side GTP receiver |
+| `vpp_interop_end_m_gtp6_d_di.sh` | End.M.GTP6.D.Di §6.4 (GTP-U → SRv6 inline) | End (RFC 8986 transit) | UL drop-in | gNB / UL source | next-hop SR endpoint |
 
 > Note: the `gnb` and `dn` netns names denote *test ingress* and
 > *test egress* of the harness, **not** 3GPP roles. In E-family
