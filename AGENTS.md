@@ -126,3 +126,65 @@ review **as if you were the upstream maintainer who has to merge it**:
 The goal is to give the patch the same scrutiny it would face on
 `netdev@vger.kernel.org`, before a tired maintainer says "needs more
 work" and moves on.
+
+## Deploying the built bundle to the CML2 verification node
+
+For end-to-end verification (selftests + VPP interop) against a real
+Ubuntu 24.04 LTS host, the patched kernel + iproute2 are installed on a
+dedicated CML2 lab node from the `.deb` bundle produced by
+`scripts/build_tarball.sh`.
+
+Hosts:
+
+- **Build server** — `tk1ad-ykusakabe-01`. After every successful run of
+  `scripts/build_tarball.sh` the freshest bundle lives at
+  `~/srv6-mup-bundle.tar.gz` on this host. Treat its mtime/sha256 as the
+  source-of-truth for "is there a newer build to install?".
+- **CML2 verification node** — `higebu@192.168.255.221`. Ubuntu 24.04
+  LTS. Receives the bundle, installs the debs with `apt-get install -y
+  ./*.deb`, and reboots into the new kernel.
+
+Workflow (run from the local workstation; both hosts are reachable over
+SSH):
+
+1. Pull the bundle from the build server and push it to the CML2 node
+   only if the build server's copy is newer than what's already on the
+   CML2 node (sha256 / mtime comparison). Do not blindly re-copy — a
+   spurious copy still triggers a reinstall + reboot below.
+2. On the CML2 node: `tar xzf srv6-mup-bundle.tar.gz`,
+   `cd srv6-mup-bundle`, `sudo apt-get install -y ./*.deb`. The kernel
+   debs land in `/boot`; `update-grub` is run by the maintainer scripts.
+3. `sudo reboot`. The new kernel is required because the bundle's debs
+   replace `linux-image-...` and the running kernel cannot be swapped
+   in-place.
+4. After the node comes back, confirm `uname -r` matches the
+   `linux-image-...srv6mup-NN` version in the freshly-installed bundle
+   and `ip -V` / `ip route help 2>&1 | grep -i mup` show the patched
+   iproute2.
+
+If there is no diff between the build-server bundle and the bundle
+already on the CML2 node, do nothing — skip steps 2–4. Reinstalling and
+rebooting "just in case" wastes the soak window for any in-progress
+verification.
+
+### Do **not** run selftests on the CML2 node without explicit instruction
+
+The kernel selftests (`tools/testing/selftests/net/srv6_*_test.sh`,
+shipped under `selftests/` inside the bundle) execute
+
+```sh
+sysctl -w net.netfilter.nf_hooks_lwtunnel=1
+```
+
+as part of their setup. This sysctl, once turned on, **cannot be
+turned off again on a running kernel** — the only way to clear it is a
+reboot. That makes running the selftests on the CML2 node a
+state-changing action with a non-trivial blast radius (subsequent
+unrelated traffic on that host goes through the netfilter lwtunnel hook
+path until the next reboot).
+
+Therefore: **never run the selftests on the CML2 node on your own
+initiative.** Wait for an explicit "run the selftests now" instruction
+from the user. Deployment (copy + `apt-get install` + reboot) is fine
+to do autonomously when a newer bundle is available; the selftest
+invocation is not.
