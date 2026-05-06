@@ -118,7 +118,7 @@ sed -e "s/srv6mup${OLD_P}-/srv6mup${NEW_P}-/g" \
 ```bash
 gh release create bundle-v${NEW} \
     --repo higebu/srv6-mup-tests \
-    --title "SRv6 MUP bundle v${NEW} (kernel srv6mup-NN + iproute2 srv6mupMM + FRR srv6mupP)" \
+    --title "v${NEW}" \
     --notes-file /tmp/v${NEW}-notes.md \
     /tmp/srv6-mup-release/bzImage-* \
     /tmp/srv6-mup-release/linux-image-*.deb \
@@ -144,5 +144,4 @@ gh release view bundle-v${NEW} --repo higebu/srv6-mup-tests \
 ```
 
 Expect 12 assets (1 bzImage + 3 kernel debs + 2 iproute2 debs + 6 FRR
-debs) and a title of the form `SRv6 MUP bundle vNN (kernel srv6mup-NN +
-iproute2 srv6mupMM + FRR srv6mupP)`.
+debs) and a title of `vNN` matching the tag's bundle suffix.
