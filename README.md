@@ -36,7 +36,8 @@ srv6-mup-tests/
 │   ├── selftests.md           -- how to run the kernel selftests under vng
 │   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios
 │   ├── topology.md            -- per-scenario netns + veth topology
-│   └── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
+│   ├── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
+│   └── release.md             -- how to cut a bundle-vNN GitHub release
 ├── scripts/                   -- harness scripts
 │   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
@@ -57,7 +58,8 @@ srv6-mup-tests/
 │   │   ├── pe1/{zebra.conf,bgpd.conf}
 │   │   ├── gw1/{zebra.conf,bgpd.conf}
 │   │   └── gbgp/gobgpd.toml
-│   └── build_tarball.sh                 -- rebuild ~/srv6-mup-bundle.tar.gz from sibling linux/ + iproute2/
+│   ├── build_tarball.sh                 -- rebuild ~/srv6-mup-bundle.tar.gz from sibling linux/ + iproute2/
+│   └── build_frr_deb.sh                 -- build FRR Ubuntu Noble debs from sibling frr/ for the bundle
 ├── pcaps/                     -- merged pcaps from a recent run
 │   │                              (test ingress + SR-domain wire + test egress)
 │   └── nlmon/                 -- reference rtnetlink captures of zebra
