@@ -179,98 +179,15 @@ ip -n gnb route add $T2ST_EP/32 via 10.99.0.1
 # them.  See write_pe1_conf / write_gw1_conf below.
 
 # -------------------------------------------------------------------------
-# FRR configs
+# FRR configs (daemon configs live in configs/frr_mup_e2e_gobgp_scapy/<ns>/;
+# ASN_PE1=$ASN_PE1 / ASN_GW1=$ASN_GW1 / ASN_GBGP=$ASN_GBGP /
+# ISD_PFX=$ISD_PFX are baked in there as literals)
 # -------------------------------------------------------------------------
-write_pe1_conf() {
-	cat > /tmp/pe1/zebra.conf <<EOF
-hostname pe1
-no zebra nexthop kernel enable
-debug zebra kernel
-debug zebra rib detailed
-debug zebra dplane detailed
-!
-segment-routing
- srv6
-  locators
-   locator default
-    prefix 2001:db8:e::/48 block-len 24 node-len 24 func-bits 8
-   exit
-  exit
- exit
-exit
-EOF
-	cat > /tmp/pe1/bgpd.conf <<EOF
-hostname pe1
-log file /tmp/pe1/frr.log
-debug bgp neighbor-events
-debug bgp updates
-debug bgp zebra
-!
-router bgp $ASN_PE1
- bgp router-id 1.1.1.1
- no bgp default ipv4-unicast
- no bgp ebgp-requires-policy
- neighbor 2001:db8:1::1 remote-as $ASN_GW1
- neighbor 2001:db8:0::2 remote-as $ASN_GBGP
- !
- segment-routing srv6
-  locator default
- exit
- !
- address-family ipv4 mup
-  neighbor 2001:db8:1::1 activate
-  neighbor 2001:db8:0::2 activate
-  ! 'segment direct' is applied via vtysh after vrf-red is discovered.
- exit-address-family
-exit
-EOF
-}
-
-write_gw1_conf() {
-	cat > /tmp/gw1/zebra.conf <<EOF
-hostname gw1
-no zebra nexthop kernel enable
-debug zebra kernel
-debug zebra rib detailed
-debug zebra dplane detailed
-!
-segment-routing
- srv6
-  locators
-   locator default
-    prefix 2001:db8:f::/48 block-len 24 node-len 24 func-bits 8
-   exit
-  exit
- exit
-exit
-EOF
-	cat > /tmp/gw1/bgpd.conf <<EOF
-hostname gw1
-log file /tmp/gw1/frr.log
-debug bgp neighbor-events
-debug bgp updates
-debug bgp zebra
-!
-router bgp $ASN_GW1
- bgp router-id 2.2.2.2
- no bgp default ipv4-unicast
- no bgp ebgp-requires-policy
- neighbor 2001:db8:1::2 remote-as $ASN_PE1
- !
- segment-routing srv6
-  locator default
- exit
- !
- address-family ipv4 mup
-  neighbor 2001:db8:1::2 activate
-  segment interwork $ISD_PFX rd 200:200 rt 10:10
- exit-address-family
-exit
-EOF
-}
-
-write_pe1_conf
-write_gw1_conf
+CFG=$HERE/configs/frr_mup_e2e_gobgp_scapy
+for ns in pe1 gw1; do
+	install -m 644 $CFG/$ns/zebra.conf /tmp/$ns/zebra.conf
+	install -m 644 $CFG/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
+done
 
 # -------------------------------------------------------------------------
 # Start FRR daemons in pe1 + gw1
@@ -309,27 +226,14 @@ $VTYSH_PE1 <<EOF
 configure terminal
 router bgp $ASN_PE1
 address-family ipv4 mup
-segment direct $DSD_EP rd 100:100 rt 10:10 mup 10:10 behavior end-dt4 vrf vrf-red
+segment direct $DSD_EP rd 100:100 rt 10:10 mup 10:10 behavior End_DT4 vrf vrf-red
 end
 EOF
 
 # -------------------------------------------------------------------------
 # Start gobgpd in gbgp + inject T1ST + T2ST as MUP-Controller
 # -------------------------------------------------------------------------
-cat > /tmp/gbgp/gobgpd.toml <<EOF
-[global.config]
-  as = $ASN_GBGP
-  router-id = "10.0.0.250"
-[[neighbors]]
-  [neighbors.config]
-    neighbor-address = "2001:db8:0::1"
-    peer-as = $ASN_PE1
-  [neighbors.transport.config]
-    local-address = "2001:db8:0::2"
-  [[neighbors.afi-safis]]
-    [neighbors.afi-safis.config]
-      afi-safi-name = "ipv4-mup"
-EOF
+install -m 644 $CFG/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
 ip netns exec gbgp $BIN/gobgpd -t toml -f /tmp/gbgp/gobgpd.toml \
 	--api-hosts=127.0.0.1:50051 \
 	> /tmp/gbgp/gobgpd.log 2>&1 &

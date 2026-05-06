@@ -66,51 +66,11 @@ for ns in pe1 pe2; do
 done
 
 # --- FRR configs ----------------------------------------------------------
-cat > /tmp/pe1/zebra.conf <<EOF
-hostname pe1
-! Disable use of the kernel nexthop API for installs.  The kernel
-! NEXTHOP_OBJ subsystem rejects nexthops that carry an LWT encap
-! (RTM_NEWNEXTHOP returns -EINVAL "Nexthop id does not exist"), but the
-! seg6local install needs encap.  Falling back to per-route inline
-! nexthops sidesteps the limitation.
-no zebra nexthop kernel enable
-debug zebra kernel msgdump send
-debug zebra kernel
-debug zebra dplane detailed
-debug zebra rib detailed
-EOF
-cat > /tmp/pe1/bgpd.conf <<EOF
-hostname pe1
-log file /tmp/pe1/frr.log
-debug bgp neighbor-events
-debug bgp updates
-debug bgp zebra
-!
-router bgp 65001
- bgp router-id 1.1.1.1
- no bgp default ipv4-unicast
- no bgp ebgp-requires-policy
- neighbor 2001:db8:1::2 remote-as 65000
- neighbor 2001:db8:2::2 remote-as 65002
- !
- address-family ipv4 mup
-  neighbor 2001:db8:1::2 activate
-  neighbor 2001:db8:2::2 activate
- exit-address-family
- !
- address-family ipv6 mup
-  neighbor 2001:db8:1::2 activate
-  neighbor 2001:db8:2::2 activate
- exit-address-family
-exit
-EOF
-
-cat > /tmp/pe2/zebra.conf <<EOF
-hostname pe2
-no zebra nexthop kernel enable
-debug zebra kernel
-debug zebra rib detailed
-EOF
+# Daemon configs live in configs/frr_interop_mup/<ns>/.
+CFG=$HERE/configs/frr_interop_mup
+install -m 644 $CFG/pe1/zebra.conf /tmp/pe1/zebra.conf
+install -m 644 $CFG/pe1/bgpd.conf  /tmp/pe1/bgpd.conf
+install -m 644 $CFG/pe2/zebra.conf /tmp/pe2/zebra.conf
 # Sanity: can the kernel itself accept the seg6local route we want zebra
 # to install?  If this fails, zebra has no chance.  Mirror zebra's exact
 # proto/metric/type so any divergence becomes visible here.
@@ -133,28 +93,7 @@ kill $T_IP 2>/dev/null; wait $T_IP 2>/dev/null
 # Leave nlmon0 up; we'll re-arm capture for the zebra path further down.
 echo "===NLMON-IPROUTE2-DUMP==="
 ip netns exec pe1 tcpdump -nXr /tmp/pe1/iproute2.nlmon 2>&1 | head -60 || true
-cat > /tmp/pe2/bgpd.conf <<EOF
-hostname pe2
-log file /tmp/pe2/frr.log
-debug bgp neighbor-events
-debug bgp updates
-debug bgp zebra
-!
-router bgp 65002
- bgp router-id 2.2.2.2
- no bgp default ipv4-unicast
- no bgp ebgp-requires-policy
- neighbor 2001:db8:2::1 remote-as 65001
- !
- address-family ipv4 mup
-  neighbor 2001:db8:2::1 activate
- exit-address-family
- !
- address-family ipv6 mup
-  neighbor 2001:db8:2::1 activate
- exit-address-family
-exit
-EOF
+install -m 644 $CFG/pe2/bgpd.conf /tmp/pe2/bgpd.conf
 
 # --- start zebra + bgpd in each PE namespace ------------------------------
 start_pe() {
@@ -186,23 +125,7 @@ for ns in pe1 pe2; do
 done
 
 # --- start gobgpd in gbgp netns -------------------------------------------
-cat > /tmp/gbgp/gobgpd.toml <<'EOF'
-[global.config]
-  as = 65000
-  router-id = "10.0.0.250"
-[[neighbors]]
-  [neighbors.config]
-    neighbor-address = "2001:db8:1::1"
-    peer-as = 65001
-  [neighbors.transport.config]
-    local-address = "2001:db8:1::2"
-  [[neighbors.afi-safis]]
-    [neighbors.afi-safis.config]
-      afi-safi-name = "ipv4-mup"
-  [[neighbors.afi-safis]]
-    [neighbors.afi-safis.config]
-      afi-safi-name = "ipv6-mup"
-EOF
+install -m 644 $CFG/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
 ip netns exec gbgp $BIN/gobgpd -t toml -f /tmp/gbgp/gobgpd.toml --api-hosts=127.0.0.1:50051 \
     > /tmp/gbgp/gobgpd.log 2>&1 &
 GOBGP_PID=$!

@@ -43,67 +43,12 @@ done
 # --- FRR configs ----------------------------------------------------------
 # pe1: originates ISD (10.99.0.0/24) and DSD (10.0.0.250) for the SR
 # locator 2001:db8:e::/96 served by behavior End.M.GTP4.E.
-cat > /tmp/pe1/zebra.conf <<EOF
-hostname pe1
-no zebra nexthop kernel enable
-debug zebra srv6
-!
-segment-routing
- srv6
-  locators
-   locator default
-    prefix 2001:db8:e::/64 block-len 40 node-len 24 func-bits 16
-EOF
-cat > /tmp/pe1/bgpd.conf <<EOF
-hostname pe1
-debug bgp neighbor-events
-debug bgp updates
-debug bgp zebra
-!
-router bgp 65001
- bgp router-id 1.1.1.1
- no bgp default ipv4-unicast
- no bgp ebgp-requires-policy
- neighbor 2001:db8:2::2 remote-as 65002
- !
- segment-routing srv6
-  locator default
- exit
- !
- address-family ipv4 mup
-  neighbor 2001:db8:2::2 activate
- exit-address-family
- !
- address-family ipv6 mup
-  neighbor 2001:db8:2::2 activate
- exit-address-family
-exit
-EOF
-
-cat > /tmp/pe2/zebra.conf <<EOF
-hostname pe2
-no zebra nexthop kernel enable
-EOF
-cat > /tmp/pe2/bgpd.conf <<EOF
-hostname pe2
-debug bgp neighbor-events
-debug bgp updates
-!
-router bgp 65002
- bgp router-id 2.2.2.2
- no bgp default ipv4-unicast
- no bgp ebgp-requires-policy
- neighbor 2001:db8:2::1 remote-as 65001
- !
- address-family ipv4 mup
-  neighbor 2001:db8:2::1 activate
- exit-address-family
- !
- address-family ipv6 mup
-  neighbor 2001:db8:2::1 activate
- exit-address-family
-exit
-EOF
+# Daemon configs live in configs/frr_only_segment/<ns>/.
+CFG=$HERE/configs/frr_only_segment
+for ns in pe1 pe2; do
+    install -m 644 $CFG/$ns/zebra.conf /tmp/$ns/zebra.conf
+    install -m 644 $CFG/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
+done
 
 start_pe() {
     local ns=$1
@@ -147,7 +92,7 @@ $VTYSH_PE1 -c 'configure' \
     -c 'router bgp 65001' \
     -c 'address-family ipv4 mup' \
     -c 'segment interwork 10.99.0.0/24 rd 100:100 rt 65001:1' \
-    -c 'segment direct 10.0.0.250 rd 100:100 rt 65001:1 mup 65001:10 behavior end-dt4' \
+    -c 'segment direct 10.0.0.250 rd 100:100 rt 65001:1 mup 65001:10 behavior End_DT4' \
     -c 'exit-address-family' \
     -c 'address-family ipv6 mup' \
     -c 'segment interwork 2001:db8:99::/64 rd 200:200 rt 65001:2' \

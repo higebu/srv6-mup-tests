@@ -1,0 +1,12 @@
+[global.config]
+  as = 65000
+  router-id = "10.0.0.250"
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "2001:db8:0::1"
+    peer-as = 65001
+  [neighbors.transport.config]
+    local-address = "2001:db8:0::2"
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv4-mup"
