@@ -192,28 +192,31 @@ ip -n dn  route add default via 10.1.0.1
 # gnb explicitly knows the GTP-U service IP is reachable via gw1.
 ip -n gnb route add $T2ST_EP/32 via 10.99.0.1
 # SR locator routes are configured via FRR `ipv6 route` static
-# commands inside pe1/gw1 zebra.conf so zebra's NHT subsystem sees
+# commands inside pe1/gw1 frr.conf so zebra's NHT subsystem sees
 # them.  See write_pe1_conf / write_gw1_conf below.
 
 # -------------------------------------------------------------------------
-# FRR configs (daemon configs sit alongside this script in pe1/, gw1/,
-# gbgp/; ASN_PE1=$ASN_PE1 / ASN_GW1=$ASN_GW1 / ASN_GBGP=$ASN_GBGP /
-# ISD_PFX=$ISD_PFX are baked in there as literals)
+# FRR configs (single frr.conf per ns, same convention used by the FRR
+# topotests; each daemon picks up only the directives it owns).
 # -------------------------------------------------------------------------
 for ns in pe1 gw1; do
-	install -m 644 $HERE/$ns/zebra.conf /tmp/$ns/zebra.conf
-	install -m 644 $HERE/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
+	install -m 644 $HERE/$ns/frr.conf /tmp/$ns/frr.conf
 done
 
 # -------------------------------------------------------------------------
 # Start FRR daemons in pe1 + gw1
 # -------------------------------------------------------------------------
+#
+# Daemons start with no -f.  The shared frr.conf is rendered through
+# vtysh once the vty sockets are up so each command is dispatched to
+# the daemon that owns it (the FRR topotests use the same `vtysh -f
+# /etc/frr/frr.conf` pattern, see tests/topotests/lib/topotest.py).
 start_frr() {
 	local ns=$1
 	local mopts="-d -u root -g root -i /tmp/$ns/mgmtd.pid --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/mgmtd.log"
-	local zopts="-d -u root -g root -f /tmp/$ns/zebra.conf -i /tmp/$ns/zebra.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/zebra.log"
+	local zopts="-d -u root -g root -i /tmp/$ns/zebra.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/zebra.log"
 	local sopts="-d -u root -g root -i /tmp/$ns/staticd.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/staticd.log"
-	local bopts="-d -u root -g root -f /tmp/$ns/bgpd.conf  -i /tmp/$ns/bgpd.pid  -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/bgpd.log"
+	local bopts="-d -u root -g root -i /tmp/$ns/bgpd.pid  -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/bgpd.log"
 	ip netns exec $ns $FRR/mgmtd/mgmtd $mopts
 	ip netns exec $ns $FRR/zebra/zebra $zopts
 	ip netns exec $ns $FRR/staticd/staticd $sopts
@@ -240,20 +243,27 @@ start_frr gw1
 VTYSH_PE1="ip netns exec pe1 $FRR/vtysh/vtysh --vty_socket /tmp/pe1"
 VTYSH_GW1="ip netns exec gw1 $FRR/vtysh/vtysh --vty_socket /tmp/gw1"
 
+# Wait briefly for vty sockets, then push the shared frr.conf via vtysh.
+sleep 1
+$VTYSH_PE1 -f /tmp/pe1/frr.conf
+$VTYSH_GW1 -f /tmp/gw1/frr.conf
+
 # staticd doesn't take a config file; push the static IPv6 routes for
 # the SR domain via vtysh after the daemons are up.
 sleep 1
 # SR underlay routes (the remote MUP-PE/GW locators) live in the
 # default vrf — production deployments populate them via IS-IS or
 # OSPFv3 SRv6 locator advertisements; the harness uses static routes
-# in default vrf for the same effect.  zebra's cross-vrf recursive
-# nexthop resolution lets per-vrf BGP-MUP installs reach the underlay
-# without needing the route duplicated into each slice's table (same
-# pattern as L3VPN's vpn_leak_to_vrf installs).
+# in default vrf for the same effect.  These could move into frr.conf
+# but staticd needs them shipped via vtysh because in-conf static
+# routes only land after staticd reads its zserv connection.  zebra's
+# cross-vrf recursive nexthop resolution lets per-vrf BGP-MUP installs
+# reach the underlay without needing the route duplicated into each
+# slice's table (same pattern as L3VPN's vpn_leak_to_vrf installs).
 $VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
 $VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
 
-# `segment direct` for vrf-red is declared in pe1/bgpd.conf under
+# `segment direct` for vrf-red is declared in pe1/frr.conf under
 # `router bgp $ASN_PE1 vrf vrf-red`; bgpd's locator-arrival hook
 # (bgp_mup_replay_origins_all) finishes the SID setup as soon as zebra
 # ships the locator chunks.
