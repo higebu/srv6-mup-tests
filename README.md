@@ -108,10 +108,16 @@ first:
 
 ### Bundle install (Ubuntu 24.04 LTS)
 
-Prebuilt `.deb` artifacts are attached to each
-[GitHub Release](https://github.com/higebu/srv6-mup-tests/releases)
-(kernel + iproute2 + FRR).  See the release notes for the exact
-versions and the `libyang2` repo step needed for FRR.  In short:
+Prebuilt artifacts are attached to each
+[GitHub Release](https://github.com/higebu/srv6-mup-tests/releases):
+
+- `linux-image*.deb`, `linux-headers*.deb`, `linux-libc-dev*.deb` —
+  patched kernel (Ubuntu 24.04 install path)
+- `bzImage-...` — the same kernel image extracted, for booting under
+  `vng --run ./bzImage-...` without installing the deb
+- `iproute2*.deb`, `iproute2-doc*.deb` — patched iproute2
+- `frr*.deb` — FRR with BGP-MUP SAFI (needs the FRR apt repo for
+  `libyang2 >= 2.1.128`; see release notes)
 
 ```bash
 mkdir bundle && cd bundle
