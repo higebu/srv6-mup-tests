@@ -43,9 +43,20 @@ srv6-mup-tests/
 │   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6) -> VPP end.m.gtp6.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (GTP-U -> SRv6) -> Linux End.M.GTP6.E (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (GTP-U -> SRv6 inline) -> VPP End (RFC 8986 transit)
-│   ├── frr_only_segment.sh              -- pe1 (FRR) `segment interwork|direct` -> pe2 (FRR), no external MUP-C
-│   ├── frr_interop_mup.sh               -- gobgpd -> pe1 (FRR) -> pe2 (FRR), 3-router BGP-MUP control-plane interop
-│   ├── frr_mup_e2e_gobgp_scapy.sh       -- gobgpd (MUP-C) + pe1/gw1 (FRR) + scapy gNB, full E2E (DL + UL)
+│   ├── frr_only_segment/                -- pe1 (FRR) `segment interwork|direct` -> pe2 (FRR), no external MUP-C
+│   │   ├── frr_only_segment.sh
+│   │   ├── pe1/{zebra.conf,bgpd.conf}
+│   │   └── pe2/{zebra.conf,bgpd.conf}
+│   ├── frr_interop_mup/                 -- gobgpd -> pe1 (FRR) -> pe2 (FRR), 3-router BGP-MUP control-plane interop
+│   │   ├── frr_interop_mup.sh
+│   │   ├── pe1/{zebra.conf,bgpd.conf}
+│   │   ├── pe2/{zebra.conf,bgpd.conf}
+│   │   └── gbgp/gobgpd.toml
+│   ├── frr_mup_e2e_gobgp_scapy/         -- gobgpd (MUP-C) + pe1/gw1 (FRR) + scapy gNB, full E2E (DL + UL)
+│   │   ├── frr_mup_e2e_gobgp_scapy.sh
+│   │   ├── pe1/{zebra.conf,bgpd.conf}
+│   │   ├── gw1/{zebra.conf,bgpd.conf}
+│   │   └── gbgp/gobgpd.toml
 │   └── build_tarball.sh                 -- rebuild ~/srv6-mup-bundle.tar.gz from sibling linux/ + iproute2/
 ├── pcaps/                     -- merged pcaps from a recent run
 │   │                              (test ingress + SR-domain wire + test egress)
@@ -190,17 +201,17 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
 # 1. FRR-only originate (no external MUP-Controller)
 script -q -c "vng -m 4G --run $ROOT/linux --user root \
-  -- $ROOT/srv6-mup-tests/scripts/frr_only_segment.sh" /tmp/frr-only.log
+  -- $ROOT/srv6-mup-tests/scripts/frr_only_segment/frr_only_segment.sh" /tmp/frr-only.log
 grep -E 'FRR-ONLY-SEGMENT' /tmp/frr-only.log
 
 # 2. gobgpd <-> FRR <-> FRR control-plane interop
 script -q -c "vng -m 4G --run $ROOT/linux --user root \
-  -- $ROOT/srv6-mup-tests/scripts/frr_interop_mup.sh" /tmp/frr-interop.log
+  -- $ROOT/srv6-mup-tests/scripts/frr_interop_mup/frr_interop_mup.sh" /tmp/frr-interop.log
 grep -E 'FRR-INTEROP' /tmp/frr-interop.log
 
 # 3. Full E2E (gobgpd MUP-C + FRR PE/GW + scapy gNB), DL + UL
 script -q -c "vng -m 4G --run $ROOT/linux --user root \
-  -- $ROOT/srv6-mup-tests/scripts/frr_mup_e2e_gobgp_scapy.sh" /tmp/frr-e2e.log
+  -- $ROOT/srv6-mup-tests/scripts/frr_mup_e2e_gobgp_scapy/frr_mup_e2e_gobgp_scapy.sh" /tmp/frr-e2e.log
 grep -E 'E2E' /tmp/frr-e2e.log
 ```
 

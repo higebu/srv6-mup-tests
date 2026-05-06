@@ -22,9 +22,9 @@
 
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-ROOT=$(cd "$HERE/../.." && pwd)
+ROOT=$(cd "$HERE/../../.." && pwd)
 FRR=$ROOT/frr
-BIN=$HERE/../.bin
+BIN=$HERE/../../.bin
 
 export PATH="$ROOT/iproute2/ip:$BIN:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
@@ -66,11 +66,10 @@ for ns in pe1 pe2; do
 done
 
 # --- FRR configs ----------------------------------------------------------
-# Daemon configs live in configs/frr_interop_mup/<ns>/.
-CFG=$HERE/configs/frr_interop_mup
-install -m 644 $CFG/pe1/zebra.conf /tmp/pe1/zebra.conf
-install -m 644 $CFG/pe1/bgpd.conf  /tmp/pe1/bgpd.conf
-install -m 644 $CFG/pe2/zebra.conf /tmp/pe2/zebra.conf
+# Daemon configs sit alongside this script in pe1/, pe2/, gbgp/.
+install -m 644 $HERE/pe1/zebra.conf /tmp/pe1/zebra.conf
+install -m 644 $HERE/pe1/bgpd.conf  /tmp/pe1/bgpd.conf
+install -m 644 $HERE/pe2/zebra.conf /tmp/pe2/zebra.conf
 # Sanity: can the kernel itself accept the seg6local route we want zebra
 # to install?  If this fails, zebra has no chance.  Mirror zebra's exact
 # proto/metric/type so any divergence becomes visible here.
@@ -93,7 +92,7 @@ kill $T_IP 2>/dev/null; wait $T_IP 2>/dev/null
 # Leave nlmon0 up; we'll re-arm capture for the zebra path further down.
 echo "===NLMON-IPROUTE2-DUMP==="
 ip netns exec pe1 tcpdump -nXr /tmp/pe1/iproute2.nlmon 2>&1 | head -60 || true
-install -m 644 $CFG/pe2/bgpd.conf /tmp/pe2/bgpd.conf
+install -m 644 $HERE/pe2/bgpd.conf /tmp/pe2/bgpd.conf
 
 # --- start zebra + bgpd in each PE namespace ------------------------------
 start_pe() {
@@ -125,7 +124,7 @@ for ns in pe1 pe2; do
 done
 
 # --- start gobgpd in gbgp netns -------------------------------------------
-install -m 644 $CFG/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
+install -m 644 $HERE/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
 ip netns exec gbgp $BIN/gobgpd -t toml -f /tmp/gbgp/gobgpd.toml --api-hosts=127.0.0.1:50051 \
     > /tmp/gbgp/gobgpd.log 2>&1 &
 GOBGP_PID=$!

@@ -42,9 +42,9 @@
 
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-ROOT=$(cd "$HERE/../.." && pwd)
+ROOT=$(cd "$HERE/../../.." && pwd)
 FRR=$ROOT/frr
-BIN=$HERE/../.bin
+BIN=$HERE/../../.bin
 
 export PATH="$ROOT/iproute2/ip:$BIN:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
@@ -179,14 +179,13 @@ ip -n gnb route add $T2ST_EP/32 via 10.99.0.1
 # them.  See write_pe1_conf / write_gw1_conf below.
 
 # -------------------------------------------------------------------------
-# FRR configs (daemon configs live in configs/frr_mup_e2e_gobgp_scapy/<ns>/;
-# ASN_PE1=$ASN_PE1 / ASN_GW1=$ASN_GW1 / ASN_GBGP=$ASN_GBGP /
+# FRR configs (daemon configs sit alongside this script in pe1/, gw1/,
+# gbgp/; ASN_PE1=$ASN_PE1 / ASN_GW1=$ASN_GW1 / ASN_GBGP=$ASN_GBGP /
 # ISD_PFX=$ISD_PFX are baked in there as literals)
 # -------------------------------------------------------------------------
-CFG=$HERE/configs/frr_mup_e2e_gobgp_scapy
 for ns in pe1 gw1; do
-	install -m 644 $CFG/$ns/zebra.conf /tmp/$ns/zebra.conf
-	install -m 644 $CFG/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
+	install -m 644 $HERE/$ns/zebra.conf /tmp/$ns/zebra.conf
+	install -m 644 $HERE/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
 done
 
 # -------------------------------------------------------------------------
@@ -233,7 +232,7 @@ EOF
 # -------------------------------------------------------------------------
 # Start gobgpd in gbgp + inject T1ST + T2ST as MUP-Controller
 # -------------------------------------------------------------------------
-install -m 644 $CFG/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
+install -m 644 $HERE/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
 ip netns exec gbgp $BIN/gobgpd -t toml -f /tmp/gbgp/gobgpd.toml \
 	--api-hosts=127.0.0.1:50051 \
 	> /tmp/gbgp/gobgpd.log 2>&1 &

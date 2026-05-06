@@ -13,7 +13,7 @@
 
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-ROOT=$(cd "$HERE/../.." && pwd)
+ROOT=$(cd "$HERE/../../.." && pwd)
 FRR=$ROOT/frr
 
 export PATH="$ROOT/iproute2/ip:$PATH"
@@ -43,11 +43,10 @@ done
 # --- FRR configs ----------------------------------------------------------
 # pe1: originates ISD (10.99.0.0/24) and DSD (10.0.0.250) for the SR
 # locator 2001:db8:e::/96 served by behavior End.M.GTP4.E.
-# Daemon configs live in configs/frr_only_segment/<ns>/.
-CFG=$HERE/configs/frr_only_segment
+# Daemon configs sit alongside this script in pe1/ and pe2/.
 for ns in pe1 pe2; do
-    install -m 644 $CFG/$ns/zebra.conf /tmp/$ns/zebra.conf
-    install -m 644 $CFG/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
+    install -m 644 $HERE/$ns/zebra.conf /tmp/$ns/zebra.conf
+    install -m 644 $HERE/$ns/bgpd.conf  /tmp/$ns/bgpd.conf
 done
 
 start_pe() {
