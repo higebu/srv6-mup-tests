@@ -329,6 +329,22 @@ $GOBGP global rib add -a ipv4-mup t2st $T2ST_EP \
 	rd 100:100 endpoint-address-length 32 teid $TEID \
 	rt 10:10 mup 10:10 2>&1 || echo "T2ST inject FAIL"
 
+# Negative RT-import injects: same RD and resolvable ISD/DSD-segId, but
+# RT 99:99 doesn't match any vrf-red `segment` import on pe1/gw1.  These
+# routes must be received into the default-vrf MUP RIB but MUST NOT
+# leak into vrf-red's table 100 — that's the L3VPN-style RT filter
+# the harness verifies in the verdict block below.
+UE_PFX_NORT=192.168.10.99
+T1ST_EP_NORT=10.99.0.99
+T2ST_EP_NORT=10.99.0.200
+$GOBGP global rib add -a ipv4-mup t1st $UE_PFX_NORT/32 \
+	rd 100:100 rt 99:99 teid $TEID qfi $QFI \
+	endpoint $T1ST_EP_NORT source $T1ST_EP_NORT 2>&1 || echo "T1ST(no-RT) inject FAIL"
+
+$GOBGP global rib add -a ipv4-mup t2st $T2ST_EP_NORT \
+	rd 100:100 endpoint-address-length 32 teid $TEID \
+	rt 99:99 mup 10:10 2>&1 || echo "T2ST(no-RT) inject FAIL"
+
 sleep 3
 
 # -------------------------------------------------------------------------
@@ -412,6 +428,30 @@ fi
 GW1_T2ST_MAIN=$(ip -n gw1 -4 route show table main $T2ST_EP 2>&1 | head -1)
 [ -z "$GW1_T2ST_MAIN" ] || \
 	fail "gw1: T2ST leaked into main FIB (slice isolation broken): $GW1_T2ST_MAIN"
+
+# (2b) RT import filter — routes carrying an RT not present on any
+# vrf-red `segment` line must be received into the default-vrf MUP RIB
+# but NOT installed into vrf-red (table 100) or main FIB on either
+# node.  Same posture as L3VPN: VPNv4 routes whose RT doesn't match a
+# vrf's import RT stay in the default RIB.
+PE1_T1ST_NORT_VRF=$(ip -n pe1 -4 route show table 100  $UE_PFX_NORT 2>&1 | head -1)
+PE1_T1ST_NORT_MAIN=$(ip -n pe1 -4 route show table main $UE_PFX_NORT 2>&1 | head -1)
+[ -z "$PE1_T1ST_NORT_VRF"  ] || fail "pe1: T1ST(rt 99:99) leaked into vrf-red: $PE1_T1ST_NORT_VRF"
+[ -z "$PE1_T1ST_NORT_MAIN" ] || fail "pe1: T1ST(rt 99:99) leaked into main FIB: $PE1_T1ST_NORT_MAIN"
+
+GW1_T2ST_NORT_VRF=$(ip -n gw1 -4 route show table 100  $T2ST_EP_NORT 2>&1 | head -1)
+GW1_T2ST_NORT_MAIN=$(ip -n gw1 -4 route show table main $T2ST_EP_NORT 2>&1 | head -1)
+[ -z "$GW1_T2ST_NORT_VRF"  ] || fail "gw1: T2ST(rt 99:99) leaked into vrf-red: $GW1_T2ST_NORT_VRF"
+[ -z "$GW1_T2ST_NORT_MAIN" ] || fail "gw1: T2ST(rt 99:99) leaked into main FIB: $GW1_T2ST_NORT_MAIN"
+
+# Sanity: the same routes ARE present in the default-vrf MUP RIB —
+# RT mismatch only blocks per-vrf import, not session-level acceptance.
+$VTYSH_PE1 -c "show bgp ipv4 mup all" 2>/dev/null \
+	| grep -q "$UE_PFX_NORT" \
+	|| fail "pe1: T1ST(rt 99:99) missing from default-vrf MUP RIB (was it dropped at session?)"
+$VTYSH_GW1 -c "show bgp ipv4 mup all" 2>/dev/null \
+	| grep -q "$T2ST_EP_NORT" \
+	|| fail "gw1: T2ST(rt 99:99) missing from default-vrf MUP RIB (was it dropped at session?)"
 
 # (3) pe1's End.DT4 seg6local install at the DSD SID locator (must
 # exist for UL terminator).  iproute2 prints encap *first* with `-d`.
