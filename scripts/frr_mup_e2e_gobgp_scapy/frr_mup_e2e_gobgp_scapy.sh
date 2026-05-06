@@ -46,6 +46,15 @@ ROOT=$(cd "$HERE/../../.." && pwd)
 FRR=$ROOT/frr
 BIN=$HERE/../../.bin
 
+# DEBUG=1 turns on:
+#   * nlmon0 inside pe1 + gw1 — captures every RTM_NEWROUTE FRR/zebra emits
+#     so we can decode the seg6local nest (e.g. confirm SEG6_LOCAL_OIF
+#     presence) bit-by-bit against the kernel's expectations.
+#   * `tcpdump -i any` on pe1 + gw1 alongside the existing per-veth pcaps,
+#     to catch packets that exist on the seg6local internal path but never
+#     reach a physical veth (post-action route lookups, drops at LOCAL_OUT).
+DEBUG=${DEBUG:-0}
+
 export PATH="$ROOT/iproute2/ip:$BIN:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
 mount -t tmpfs tmpfs /usr/local/var/run 2>/dev/null
@@ -210,6 +219,21 @@ start_frr() {
 	ip netns exec $ns $FRR/staticd/staticd $sopts
 	ip netns exec $ns $FRR/bgpd/bgpd  $bopts
 }
+# DEBUG=1 captures: stand up nlmon0 BEFORE FRR boots so RTM_NEWROUTEs
+# from the SID-manager → seg6local install path land in the pcap.
+DBG_PIDS=()
+if [ "$DEBUG" = "1" ]; then
+	echo "===DEBUG-NLMON-START==="
+	mkdir -p /tmp/pcap
+	for ns in pe1 gw1; do
+		ip -n $ns link add nlmon0 type nlmon
+		ip -n $ns link set nlmon0 up
+		ip netns exec $ns tcpdump -nU -i nlmon0 \
+			-w /tmp/pcap/$ns-nl.pcap 2>/dev/null &
+		DBG_PIDS+=($!)
+	done
+fi
+
 start_frr pe1
 start_frr gw1
 
@@ -305,30 +329,18 @@ $VTYSH_PE1 -c 'show bgp ipv4 mup all detail-routes' 2>&1 | head -80
 echo "===GW1-BGP-MUP-DETAIL==="
 $VTYSH_GW1 -c 'show bgp ipv4 mup all detail-routes' 2>&1 | head -80
 
-echo "===PE1-IP-ROUTE==="
-ip -n pe1 -d -4 route show $UE_PFX  2>&1
-echo "===GW1-IP-ROUTE==="
-ip -n gw1 -d -4 route show $T2ST_EP 2>&1
+# BGP-MUP T1ST/T2ST FIB installs land in the per-vrf table associated
+# with the segment's RT-import (vrf-red, table 100 in this harness).
+# Inspect the route show under that table — main FIB stays empty for
+# these prefixes, which the verdict block below verifies.
+echo "===PE1-IP-ROUTE-VRF-RED==="
+ip -n pe1 -d -4 route show table 100 $UE_PFX  2>&1
+echo "===GW1-IP-ROUTE-VRF-RED==="
+ip -n gw1 -d -4 route show table 100 $T2ST_EP 2>&1
 echo "===PE1-VRF-STATE==="
 ip -n pe1 -d link show vrf-red 2>&1 | head -3
 ip -n pe1 addr show 2>&1 | grep -E '^\d|inet|master' | head -30
 ip -n pe1 -6 route show table 100 2>&1 | head -15
-# Mirror the T1ST install (auto-installed by FRR in pe1's main table)
-# into vrf-red table 100 so the DL reply path (dn -> 192.168.10.5)
-# resolves on the vrf-red side after End.DT4 decap.  In production the
-# proper mechanism would be a per-VRF BGP instance importing the T1ST
-# via RT (L3VPN-style), but our `address-family ipv4 mup` is restricted
-# to the default instance (bgp_vty.c:11679-11685).
-T1ST_SID=$(ip -n pe1 -d -4 route show $UE_PFX 2>/dev/null \
-	| awk '/encap seg6/{for (i=1; i<=NF; i++) if ($i=="segs" && $(i+1)=="1") print $(i+3)}' | head -1)
-if [ -n "$T1ST_SID" ]; then
-	ip -n pe1 -4 route add table 100 $UE_PFX/32 \
-		encap seg6 mode encap segs $T1ST_SID \
-		via inet6 2001:db8:1::1 dev veth-pe-sr onlink \
-		proto bgp metric 20 2>&1 | sed 's/^/  /'
-	echo "===PE1-VRF-RED-T1ST-MIRROR==="
-	ip -n pe1 -d -4 route show table 100 $UE_PFX/32 2>&1
-fi
 
 echo "===PE1-SEG6LOCAL-DT4==="
 ip -n pe1 -d -6 route show 2>&1 | grep -B0 -A0 -E 'End\.DT4|2001:db8:e:100' | head -10
@@ -363,23 +375,33 @@ FAIL_REASONS=()
 fail() { PASS=0; FAIL_REASONS+=("$1"); }
 
 # (1) pe1's UE-prefix install: encap seg6 mode encap (H.Encaps).
-PE1_T1ST=$(ip -n pe1 -d -4 route show $UE_PFX 2>&1 | head -1)
+# The route MUST land in vrf-red (table 100), not main — BGP-MUP T1ST
+# imports per-RT just like L3VPN VPNv4 routes.  An install in main would
+# mean the slice's vrf isolation is broken.
+PE1_T1ST=$(ip -n pe1 -d -4 route show table 100 $UE_PFX 2>&1 | head -1)
 case "$PE1_T1ST" in
 	*"encap seg6"*"mode encap"*) ;;
-	*) fail "pe1: T1ST install missing 'encap seg6 mode encap' (got: $PE1_T1ST)" ;;
+	*) fail "pe1: T1ST install missing 'encap seg6 mode encap' in vrf-red (got: $PE1_T1ST)" ;;
 esac
+PE1_T1ST_MAIN=$(ip -n pe1 -4 route show table main $UE_PFX 2>&1 | head -1)
+[ -z "$PE1_T1ST_MAIN" ] || \
+	fail "pe1: T1ST leaked into main FIB (slice isolation broken): $PE1_T1ST_MAIN"
 
 # (2) gw1's T2ST install: encap seg6local action H.M.GTP4.D nh6 <pe1-DSD-SID>.
-GW1_T2ST=$(ip -n gw1 -d -4 route show $T2ST_EP 2>&1 | head -1)
+# Same vrf-red expectation as (1).
+GW1_T2ST=$(ip -n gw1 -d -4 route show table 100 $T2ST_EP 2>&1 | head -1)
 case "$GW1_T2ST" in
 	*"encap seg6local"*"H.M.GTP4.D"*) ;;
-	*) fail "gw1: T2ST install missing 'H.M.GTP4.D' action (got: $GW1_T2ST)" ;;
+	*) fail "gw1: T2ST install missing 'H.M.GTP4.D' action in vrf-red (got: $GW1_T2ST)" ;;
 esac
 if [ -n "$PE_DSD_SID" ]; then
 	if ! echo "$GW1_T2ST" | grep -qF "$PE_DSD_SID"; then
 		fail "gw1: T2ST nh6 != pe1's DSD SID $PE_DSD_SID (got: $GW1_T2ST)"
 	fi
 fi
+GW1_T2ST_MAIN=$(ip -n gw1 -4 route show table main $T2ST_EP 2>&1 | head -1)
+[ -z "$GW1_T2ST_MAIN" ] || \
+	fail "gw1: T2ST leaked into main FIB (slice isolation broken): $GW1_T2ST_MAIN"
 
 # (3) pe1's End.DT4 seg6local install at the DSD SID locator (must
 # exist for UL terminator).  iproute2 prints encap *first* with `-d`.
@@ -408,7 +430,7 @@ GW1_GTP4E=$(ip -n gw1 -d -6 route show 2>&1 | grep -E 'End\.M\.GTP4\.E' | head -
 ARGS_MOB_HEX=$(printf '%02x%08x' $(( (QFI & 0x3f) << 2 )) $TEID)
 LAST5_BYTES="${ARGS_MOB_HEX:0:2}:${ARGS_MOB_HEX:2:4}:${ARGS_MOB_HEX:6:4}"
 # Trailing groups -> we expect ":<group11>:<group12>" in IPv6 hex form
-PE1_SEGS=$(ip -n pe1 -d -4 route show $UE_PFX 2>&1 | head -1)
+PE1_SEGS=$(ip -n pe1 -d -4 route show table 100 $UE_PFX 2>&1 | head -1)
 echo "===ARGS-MOB-EXPECTED==="
 echo "  Args.Mob.Session = 0x$ARGS_MOB_HEX  (TEID=$TEID QFI=$QFI)"
 echo "  expected SID trailing-bytes 11..15 = $LAST5_BYTES"
@@ -472,6 +494,18 @@ ip netns exec pe1 tcpdump -nU -i veth-pe-dn   -w /tmp/pcap/pe1-dn.pcap 2>/dev/nu
 PT_PE1D=$!
 ip netns exec dn  tcpdump -nU -i veth-dn      -w /tmp/pcap/dn.pcap 2>/dev/null &
 PT_DN=$!
+
+# DEBUG=1: per-netns `-i any` captures so we can see packets that exist
+# on the seg6local internal flow (e.g. dst_output after End.M.GTP4.E
+# rebuilds GTP-U) but never appear on a physical veth.
+if [ "$DEBUG" = "1" ]; then
+	for ns in pe1 gw1; do
+		ip netns exec $ns tcpdump -nU -i any \
+			-w /tmp/pcap/$ns-any.pcap 2>/dev/null &
+		DBG_PIDS+=($!)
+	done
+fi
+
 sleep 1
 
 echo "===SCAPY-GTPU-PING==="
@@ -552,10 +586,25 @@ fi
 sleep 1
 kill $PT_GNB $PT_GW1S $PT_GW1G $PT_PE1S $PT_PE1D $PT_DN 2>/dev/null
 wait $PT_GNB $PT_GW1S $PT_GW1G $PT_PE1S $PT_PE1D $PT_DN 2>/dev/null
+if [ "${#DBG_PIDS[@]}" -gt 0 ]; then
+	kill "${DBG_PIDS[@]}" 2>/dev/null
+	wait "${DBG_PIDS[@]}" 2>/dev/null
+fi
 for p in gnb gw1-gnb gw1-sr pe1-sr pe1-dn dn; do
 	echo "===PCAP-$p==="
 	tcpdump -nr /tmp/pcap/$p.pcap 2>/dev/null | head -20
 done
+if [ "$DEBUG" = "1" ]; then
+	echo "===PCAP-pe1-any==="
+	tcpdump -nr /tmp/pcap/pe1-any.pcap 2>/dev/null | head -40
+	echo "===PCAP-gw1-any==="
+	tcpdump -nr /tmp/pcap/gw1-any.pcap 2>/dev/null | head -40
+	# nlmon pcaps are netlink, not L2 — tcpdump can decode them but
+	# typically tshark gives a more useful seg6local breakout.  Just
+	# report sizes here; full decode happens out-of-band post-run.
+	echo "===NLMON-SIZES==="
+	ls -l /tmp/pcap/pe1-nl.pcap /tmp/pcap/gw1-nl.pcap 2>/dev/null
+fi
 
 # -------------------------------------------------------------------------
 # Verdict
