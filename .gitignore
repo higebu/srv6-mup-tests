@@ -1,6 +1,9 @@
 # test execution artefacts
 logs/*.log
 
+# locally built helper binaries (gobgp/gobgpd, ...)
+.bin/
+
 # editor / system
 *.swp
 *.swo
