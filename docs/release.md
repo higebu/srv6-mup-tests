@@ -113,7 +113,19 @@ sed -e "s/srv6mup${OLD_P}-/srv6mup${NEW_P}-/g" \
     -e "s/${OLD_FRR_SHA}/${NEW_FRR_SHA}/g"
 ```
 
-## Step 3 — create the GitHub release
+## Step 3 — pack the staging directory into a single tarball
+
+`scripts/pack_release.sh` validates that all 12 expected files are
+present in `$STAGE_DIR`, then packs them under
+`srv6-mup-bundle-${VERSION}/` so users can grab everything in one
+download:
+
+```bash
+VERSION=v${NEW} scripts/pack_release.sh
+# writes ~/srv6-mup-bundle-v${NEW}.tar.gz (~50 MB)
+```
+
+## Step 4 — create the GitHub release
 
 ```bash
 gh release create v${NEW} \
@@ -131,10 +143,11 @@ gh release create v${NEW} \
     /tmp/srv6-mup-release/frr-pythontools_*.deb \
     /tmp/srv6-mup-release/frr-rpki-rtrlib_*.deb \
     /tmp/srv6-mup-release/frr-snmp_*.deb \
-    /tmp/srv6-mup-release/frr-test-tools_*.deb
+    /tmp/srv6-mup-release/frr-test-tools_*.deb \
+    ~/srv6-mup-bundle-v${NEW}.tar.gz
 ```
 
-## Step 4 — verify
+## Step 5 — verify
 
 ```bash
 gh release view v${NEW} --repo higebu/srv6-mup-tests \
@@ -143,5 +156,5 @@ gh release view v${NEW} --repo higebu/srv6-mup-tests \
            assets: [.assets[] | "\(.size)\t\(.name)"]}'
 ```
 
-Expect 12 assets (1 bzImage + 3 kernel debs + 2 iproute2 debs + 6 FRR
-debs) and a title of `vNN` matching the tag.
+Expect 13 assets (1 bzImage + 3 kernel debs + 2 iproute2 debs + 6 FRR
+debs + 1 tarball) and a title of `vNN` matching the tag.

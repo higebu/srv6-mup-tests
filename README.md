@@ -59,7 +59,8 @@ srv6-mup-tests/
 │   │   ├── gw1/{zebra.conf,bgpd.conf}
 │   │   └── gbgp/gobgpd.toml
 │   ├── build_tarball.sh                 -- rebuild ~/srv6-mup-bundle.tar.gz from sibling linux/ + iproute2/
-│   └── build_frr_deb.sh                 -- build FRR Ubuntu Noble debs from sibling frr/ for the bundle
+│   ├── build_frr_deb.sh                 -- build FRR Ubuntu Noble debs from sibling frr/ for the bundle
+│   └── pack_release.sh                  -- pack the staged release artifacts into ~/srv6-mup-bundle-vNN.tar.gz
 ├── pcaps/                     -- merged pcaps from a recent run
 │   │                              (test ingress + SR-domain wire + test egress)
 │   └── nlmon/                 -- reference rtnetlink captures of zebra
