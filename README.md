@@ -36,8 +36,7 @@ srv6-mup-tests/
 │   ├── selftests.md           -- how to run the kernel selftests under vng
 │   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios
 │   ├── topology.md            -- per-scenario netns + veth topology
-│   ├── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
-│   └── follow-ups.md          -- TODOs deferred from the v1 series
+│   └── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
 ├── scripts/                   -- harness scripts
 │   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
