@@ -214,20 +214,10 @@ sleep 1
 $VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
 $VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
 
-# Wait for FRR to learn vrf-red, then apply segment direct.  The
-# 'vrf vrf-red' option lets End.DT4 install reference vrf-red's
-# table 100 (matching net.vrf.strict_mode).
-for i in $(seq 1 30); do
-	if $VTYSH_PE1 -c 'show vrf' 2>/dev/null | grep -q vrf-red; then break; fi
-	sleep 0.5
-done
-$VTYSH_PE1 <<EOF
-configure terminal
-router bgp $ASN_PE1
-address-family ipv4 mup
-segment direct $DSD_EP rd 100:100 rt 10:10 mup 10:10 behavior End_DT4 vrf vrf-red
-end
-EOF
+# `segment direct ... vrf vrf-red` is now in pe1/bgpd.conf — bgpd accepts
+# it at config time even though zebra hasn't yet announced vrf-red, and
+# replays the SID install via bgp_mup_handle_vrf_update() the moment the
+# VRF appears.
 
 # -------------------------------------------------------------------------
 # Start gobgpd in gbgp + inject T1ST + T2ST as MUP-Controller
