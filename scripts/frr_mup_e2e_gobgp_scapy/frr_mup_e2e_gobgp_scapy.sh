@@ -134,6 +134,14 @@ ip -n pe1 link set vrf-red up
 ip netns exec pe1 sysctl -wq net.vrf.strict_mode=1
 ip -n pe1 link set veth-pe-dn master vrf-red
 
+# gw1 also needs a `vrf-red` netdev so `router bgp $ASN_GW1 vrf vrf-red`
+# can bind.  veth-gw-gnb (toward the UE-prefix side) goes under it so
+# the T1ST install lands in a table that resolves toward gnb.
+ip -n gw1 link add vrf-red type vrf table 100
+ip -n gw1 link set vrf-red up
+ip netns exec gw1 sysctl -wq net.vrf.strict_mode=1
+ip -n gw1 link set veth-gw-gnb master vrf-red
+
 # Now assign addresses (after vrf bind so inet6 addrs aren't flushed)
 ip -n gnb  addr add 10.99.0.5/24      dev veth-gnb
 ip -n gw1  addr add 10.99.0.1/24      dev veth-gw-gnb
@@ -211,13 +219,20 @@ VTYSH_GW1="ip netns exec gw1 $FRR/vtysh/vtysh --vty_socket /tmp/gw1"
 # staticd doesn't take a config file; push the static IPv6 routes for
 # the SR domain via vtysh after the daemons are up.
 sleep 1
+# SR underlay routes (the remote MUP-PE/GW locators) live in the
+# default vrf — production deployments populate them via IS-IS or
+# OSPFv3 SRv6 locator advertisements; the harness uses static routes
+# in default vrf for the same effect.  zebra's cross-vrf recursive
+# nexthop resolution lets per-vrf BGP-MUP installs reach the underlay
+# without needing the route duplicated into each slice's table (same
+# pattern as L3VPN's vpn_leak_to_vrf installs).
 $VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
 $VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
 
-# `segment direct ... vrf vrf-red` is now in pe1/bgpd.conf — bgpd accepts
-# it at config time even though zebra hasn't yet announced vrf-red, and
-# replays the SID install via bgp_mup_handle_vrf_update() the moment the
-# VRF appears.
+# `segment direct` for vrf-red is declared in pe1/bgpd.conf under
+# `router bgp $ASN_PE1 vrf vrf-red`; bgpd's locator-arrival hook
+# (bgp_mup_replay_origins_all) finishes the SID setup as soon as zebra
+# ships the locator chunks.
 
 # -------------------------------------------------------------------------
 # Start gobgpd in gbgp + inject T1ST + T2ST as MUP-Controller

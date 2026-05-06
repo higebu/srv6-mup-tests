@@ -40,6 +40,16 @@ for ns in pe1 pe2; do
     ip netns exec $ns sysctl -wq net.ipv6.conf.all.forwarding=1
 done
 
+# `segment interwork` / `segment direct` only live under a non-default
+# vrf bgp instance (RFC 8986 §4.7-§4.8: End.DT4/DT6 are vrf-mandatory;
+# the cleanest L3VPN-style split puts the MUP session in the default
+# vrf instance and the per-slice originations in their own vrf instance).
+# pe1 needs an actual vrf netdev for `router bgp 65001 vrf slice1` to
+# bind to; pe2 only receives, so the default vrf is enough.
+ip -n pe1 link add slice1 type vrf table 100
+ip -n pe1 link set slice1 up
+ip netns exec pe1 sysctl -wq net.vrf.strict_mode=1
+
 # --- FRR configs ----------------------------------------------------------
 # pe1: originates ISD (10.99.0.0/24) and DSD (10.0.0.250) for the SR
 # locator 2001:db8:e::/96 served by behavior End.M.GTP4.E.
@@ -86,16 +96,11 @@ echo "===PE1-BGP-SRV6==="
 $VTYSH_PE1 -c 'show bgp segment-routing srv6' 2>&1 | grep -vE "vtysh.conf|Configuration file" | head -20
 
 echo "===PE1-ORIGINATE==="
-# Function bits auto-allocated by zebra's SRv6 SID manager.
-$VTYSH_PE1 -c 'configure' \
-    -c 'router bgp 65001' \
-    -c 'address-family ipv4 mup' \
-    -c 'segment interwork 10.99.0.0/24 rd 100:100 rt 65001:1' \
-    -c 'segment direct 10.0.0.250 rd 100:100 rt 65001:1 mup 65001:10 behavior End_DT4' \
-    -c 'exit-address-family' \
-    -c 'address-family ipv6 mup' \
-    -c 'segment interwork 2001:db8:99::/64 rd 200:200 rt 65001:2' \
-    -c 'exit-address-family' 2>&1 | grep -vE "vtysh.conf|Configuration file" | head -10
+# `segment interwork|direct` for slice1 are declared directly in
+# pe1/bgpd.conf under `router bgp 65001 vrf slice1`; bgpd defers each
+# `segment` line until the SRv6 locator chunks arrive from zebra and
+# replays them via bgp_mup_replay_origins_all() (mirrors L3VPN's
+# `sid vpn export auto` post-locator replay).
 
 sleep 2
 
