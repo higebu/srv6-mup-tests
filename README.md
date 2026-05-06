@@ -37,7 +37,7 @@ srv6-mup-tests/
 │   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios
 │   ├── topology.md            -- per-scenario netns + veth topology
 │   ├── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
-│   └── release.md             -- how to cut a bundle-vNN GitHub release
+│   └── release.md             -- how to cut a vNN GitHub release
 ├── scripts/                   -- harness scripts
 │   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
@@ -123,7 +123,7 @@ Prebuilt artifacts are attached to each
 
 ```bash
 mkdir bundle && cd bundle
-gh release download bundle-v27 --repo higebu/srv6-mup-tests
+gh release download v28 --repo higebu/srv6-mup-tests
 # kernel + iproute2
 sudo apt-get install -y ./linux-*.deb ./iproute2*.deb
 # FRR (after adding the FRR apt repo for libyang2 >= 2.1.128)

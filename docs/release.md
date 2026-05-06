@@ -13,7 +13,7 @@ ships three independently-versioned components built for Ubuntu 24.04 LTS
 
 `NN`, `MM`, `P` increment **independently** — bumping one does not
 require rebuilding the others.  The release tag is the bundle number
-itself: `bundle-vNN` (the kernel tag).
+itself: `vNN` (the kernel tag).
 
 ## Staging directory
 
@@ -96,7 +96,7 @@ fields:
 
 ```bash
 PREV=v27 NEW=v28
-gh release view bundle-${PREV} --repo higebu/srv6-mup-tests \
+gh release view ${PREV} --repo higebu/srv6-mup-tests \
     --json body --jq .body > /tmp/v${NEW}-notes.md
 # Edit /tmp/v${NEW}-notes.md to bump the changed component's:
 #   - "Source" table row (commit SHA, build version)
@@ -116,7 +116,7 @@ sed -e "s/srv6mup${OLD_P}-/srv6mup${NEW_P}-/g" \
 ## Step 3 — create the GitHub release
 
 ```bash
-gh release create bundle-v${NEW} \
+gh release create v${NEW} \
     --repo higebu/srv6-mup-tests \
     --title "v${NEW}" \
     --notes-file /tmp/v${NEW}-notes.md \
@@ -137,11 +137,11 @@ gh release create bundle-v${NEW} \
 ## Step 4 — verify
 
 ```bash
-gh release view bundle-v${NEW} --repo higebu/srv6-mup-tests \
+gh release view v${NEW} --repo higebu/srv6-mup-tests \
     --json tagName,name,assets \
     --jq '{tag: .tagName, title: .name,
            assets: [.assets[] | "\(.size)\t\(.name)"]}'
 ```
 
 Expect 12 assets (1 bzImage + 3 kernel debs + 2 iproute2 debs + 6 FRR
-debs) and a title of `vNN` matching the tag's bundle suffix.
+debs) and a title of `vNN` matching the tag.
