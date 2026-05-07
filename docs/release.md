@@ -88,30 +88,31 @@ The script:
 `FRR_PKG_TAG` must monotonically increase — `dch` refuses to add a
 duplicate entry for an existing version.
 
-## Step 2 — refresh release notes
+## Step 2 — write release notes
 
-The notes file follows the v27/v28 template.  The simplest path is to
-fetch the previous release's body and sed-replace just the bumped
-fields:
+Keep the notes deliberately short — anything that does not change
+between releases (RFC scope, asset descriptions, generic install steps,
+vng usage) lives in the README, not in every release body.  The
+template is:
 
-```bash
-PREV=v27 NEW=v28
-gh release view ${PREV} --repo higebu/srv6-mup-tests \
-    --json body --jq .body > /tmp/v${NEW}-notes.md
-# Edit /tmp/v${NEW}-notes.md to bump the changed component's:
-#   - "Source" table row (commit SHA, build version)
-#   - file table rows under "Contents"
-# Leave untouched components alone.
+```markdown
+SRv6 Mobile User Plane (RFC 9433) Ubuntu 24.04 LTS deb bundle.
+
+| Component    | Branch | Commit | Build version |
+|--------------|--------|--------|---------------|
+| Linux kernel | [`b4/seg6-mobile`](https://github.com/higebu/linux/tree/b4/seg6-mobile)    | <SHA> | `7.0.0-srv6mup-NN` |
+| iproute2     | [`b4/seg6-mobile`](https://github.com/higebu/iproute2/tree/b4/seg6-mobile) | <SHA> | `7.0.0-srv6mupMM`  |
+| FRR          | [`seg6-mobile`](https://github.com/higebu/frr/tree/seg6-mobile)            | <SHA> | `10.6.0~dev+srv6mupP-0ubuntu1~noble1` |
+
+## Changes since v<PREV>
+
+- One bullet per user-visible change (component + what it does).
+
+For install instructions, asset descriptions, and harness usage, see the
+[README](https://github.com/higebu/srv6-mup-tests#bundle-install-ubuntu-2404-lts).
 ```
 
-For an FRR-only bump the diff is the FRR row in the source table plus
-the six FRR file rows under "Contents":
-
-```bash
-sed -e "s/srv6mup${OLD_P}-/srv6mup${NEW_P}-/g" \
-    -e "s/srv6mup${OLD_P}_/srv6mup${NEW_P}_/g" \
-    -e "s/${OLD_FRR_SHA}/${NEW_FRR_SHA}/g"
-```
+Save it as `/tmp/v${NEW}-notes.md`.
 
 ## Step 3 — pack the staging directory into a single tarball
 
