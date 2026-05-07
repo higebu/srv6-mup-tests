@@ -42,7 +42,7 @@ done
 
 # `segment interwork` / `segment direct` only live under a non-default
 # vrf bgp instance (RFC 8986 §4.7-§4.8: End.DT4/DT6 are vrf-mandatory;
-# the cleanest L3VPN-style split puts the MUP session in the default
+# the cleanest split puts the MUP session in the default
 # vrf instance and the per-slice originations in their own vrf instance).
 # pe1 needs an actual vrf netdev for `router bgp 65001 vrf slice1` to
 # bind to; pe2 only receives, so the default vrf is enough.

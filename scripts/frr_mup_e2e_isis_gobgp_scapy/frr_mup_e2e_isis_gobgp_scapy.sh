@@ -191,9 +191,12 @@ ip -n gnb route add default via 10.99.0.1
 ip -n dn  route add default via 10.1.0.1
 # gnb explicitly knows the GTP-U service IP is reachable via gw1.
 ip -n gnb route add $T2ST_EP/32 via 10.99.0.1
-# SR locator routes are configured via FRR `ipv6 route` static
-# commands inside pe1/gw1 frr.conf so zebra's NHT subsystem sees
-# them.  See write_pe1_conf / write_gw1_conf below.
+# SR locator routes are exchanged via IS-IS L2 reachability TLVs
+# between pe1 and gw1.  pe1's `router isis 1` advertises its locator
+# 2001:db8:e::/48 (a connected route on the lo address); gw1's
+# advertises 2001:db8:f::/48.  Each side then has a route to the
+# other's locator via the SR-domain veth, which is what BGP-MUP's
+# T1ST/T2ST nexthops resolve against.
 
 # -------------------------------------------------------------------------
 # FRR configs (single frr.conf per ns, same convention used by the FRR
@@ -215,11 +218,11 @@ start_frr() {
 	local ns=$1
 	local mopts="-d -u root -g root -i /tmp/$ns/mgmtd.pid --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/mgmtd.log"
 	local zopts="-d -u root -g root -i /tmp/$ns/zebra.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/zebra.log"
-	local sopts="-d -u root -g root -i /tmp/$ns/staticd.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/staticd.log"
+	local iopts="-d -u root -g root -i /tmp/$ns/isisd.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/isisd.log"
 	local bopts="-d -u root -g root -i /tmp/$ns/bgpd.pid  -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/bgpd.log"
 	ip netns exec $ns $FRR/mgmtd/mgmtd $mopts
 	ip netns exec $ns $FRR/zebra/zebra $zopts
-	ip netns exec $ns $FRR/staticd/staticd $sopts
+	ip netns exec $ns $FRR/isisd/isisd $iopts
 	ip netns exec $ns $FRR/bgpd/bgpd  $bopts
 }
 # DEBUG=1 captures: stand up nlmon0 BEFORE FRR boots so RTM_NEWROUTEs
@@ -248,20 +251,30 @@ sleep 1
 $VTYSH_PE1 -f /tmp/pe1/frr.conf
 $VTYSH_GW1 -f /tmp/gw1/frr.conf
 
-# staticd doesn't take a config file; push the static IPv6 routes for
-# the SR domain via vtysh after the daemons are up.
-sleep 1
-# SR underlay routes (the remote MUP-PE/GW locators) live in the
-# default vrf — production deployments populate them via IS-IS or
-# OSPFv3 SRv6 locator advertisements; the tests use static routes
-# in default vrf for the same effect.  These could move into frr.conf
-# but staticd needs them shipped via vtysh because in-conf static
-# routes only land after staticd reads its zserv connection.  zebra's
-# cross-vrf recursive nexthop resolution lets per-vrf BGP-MUP installs
-# reach the underlay without needing the route duplicated into each
-# slice's table (same pattern as L3VPN's vpn_leak_to_vrf installs).
-$VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
-$VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
+# Wait for the IS-IS L2 adjacency between pe1 and gw1 to come up so the
+# locator prefixes propagate before BGP-MUP starts injecting routes
+# whose nexthops live in those locators.
+echo "===WAIT-ISIS==="
+for i in $(seq 1 30); do
+	pe_a=$($VTYSH_PE1 -c 'show isis neighbor json' 2>/dev/null \
+		| grep -oE '"state":"Up"' | wc -l || echo 0)
+	gw_a=$($VTYSH_GW1 -c 'show isis neighbor json' 2>/dev/null \
+		| grep -oE '"state":"Up"' | wc -l || echo 0)
+	echo "  try=$i pe1_adj=$pe_a gw1_adj=$gw_a"
+	if [ "$pe_a" -ge 1 ] && [ "$gw_a" -ge 1 ]; then break; fi
+	sleep 1
+done
+# Wait for the remote locator routes to actually land in zebra (SPF
+# convergence after adjacency is up).  The kernel routes are tagged
+# `proto isis`; check the kernel directly instead of vtysh's RIB
+# rendering, which has churned across FRR versions.
+for i in $(seq 1 30); do
+	pe_r=$(ip -n pe1 -6 route show 2001:db8:f::/48 proto isis 2>/dev/null | wc -l)
+	gw_r=$(ip -n gw1 -6 route show 2001:db8:e::/48 proto isis 2>/dev/null | wc -l)
+	echo "  try=$i pe1->gw1_loc=$pe_r gw1->pe1_loc=$gw_r"
+	if [ "$pe_r" -ge 1 ] && [ "$gw_r" -ge 1 ]; then break; fi
+	sleep 1
+done
 
 # `segment direct` for vrf-red is declared in pe1/frr.conf under
 # `router bgp $ASN_PE1 vrf vrf-red`; bgpd's locator-arrival hook
@@ -661,9 +674,9 @@ fi
 # -------------------------------------------------------------------------
 echo "===VERDICT==="
 if [ "$PASS" = "1" ]; then
-	echo "FRR-MUP-E2E-GOBGP-SCAPY: PASS"
+	echo "FRR-MUP-E2E-ISIS-GOBGP-SCAPY: PASS"
 else
-	echo "FRR-MUP-E2E-GOBGP-SCAPY: FAIL"
+	echo "FRR-MUP-E2E-ISIS-GOBGP-SCAPY: FAIL"
 	for r in "${FAIL_REASONS[@]}"; do echo "  - $r"; done
 fi
 
@@ -689,7 +702,7 @@ fi
 kill $GOBGP_PID 2>/dev/null || true
 for ns in pe1 gw1; do
 	[ -f /tmp/$ns/bgpd.pid    ] && kill $(cat /tmp/$ns/bgpd.pid)    2>/dev/null || true
-	[ -f /tmp/$ns/staticd.pid ] && kill $(cat /tmp/$ns/staticd.pid) 2>/dev/null || true
+	[ -f /tmp/$ns/isisd.pid   ] && kill $(cat /tmp/$ns/isisd.pid)   2>/dev/null || true
 	[ -f /tmp/$ns/zebra.pid   ] && kill $(cat /tmp/$ns/zebra.pid)   2>/dev/null || true
 	[ -f /tmp/$ns/mgmtd.pid   ] && kill $(cat /tmp/$ns/mgmtd.pid)   2>/dev/null || true
 done
