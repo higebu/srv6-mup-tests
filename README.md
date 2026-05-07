@@ -132,7 +132,7 @@ Prebuilt artifacts are attached to each
 
 ```bash
 mkdir bundle && cd bundle
-gh release download v30 --repo higebu/srv6-mup-tests
+gh release download v31 --repo higebu/srv6-mup-tests
 
 # kernel + iproute2
 sudo apt-get install -y ./linux-*.deb ./iproute2*.deb
