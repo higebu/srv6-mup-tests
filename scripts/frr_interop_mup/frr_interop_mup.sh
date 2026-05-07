@@ -65,63 +65,70 @@ for ns in pe1 pe2; do
     ip netns exec $ns sysctl -wq net.ipv4.ip_forward=1
 done
 
-# --- FRR configs ----------------------------------------------------------
-# Daemon configs sit alongside this script in pe1/, pe2/, gbgp/.
-install -m 644 $HERE/pe1/zebra.conf /tmp/pe1/zebra.conf
-install -m 644 $HERE/pe1/bgpd.conf  /tmp/pe1/bgpd.conf
-install -m 644 $HERE/pe2/zebra.conf /tmp/pe2/zebra.conf
-# Sanity: can the kernel itself accept the seg6local route we want zebra
-# to install?  If this fails, zebra has no chance.  Mirror zebra's exact
-# proto/metric/type so any divergence becomes visible here.
-echo "===KERNEL-DIRECT-INSTALL-TRY==="
-ip -n pe1 -6 route add 2001:db8:e::/56 encap seg6local action End.M.GTP4.E \
-    src 2001:db8:e::100 v4_mask_len 32 dev lo proto bgp metric 20 2>&1 || true
-ip -n pe1 -d -6 route show 2001:db8:e::/56 2>&1 || true
-ip -n pe1 -6 route del  2001:db8:e::/56 2>/dev/null || true
-echo "===NLMON-IPROUTE2-CAPTURE==="
-ip -n pe1 link add nlmon0 type nlmon 2>&1
-ip -n pe1 link set nlmon0 up 2>&1
-ip netns exec pe1 tcpdump -nXX -i nlmon0 -w /tmp/pe1/iproute2.nlmon 2>/dev/null &
-T_IP=$!
-sleep 0.5
-ip -n pe1 -6 route add 2001:db8:e::/56 encap seg6local action End.M.GTP4.E \
-    src 2001:db8:e::100 v4_mask_len 32 dev lo proto bgp metric 20 2>&1
-sleep 0.5
-ip -n pe1 -6 route del  2001:db8:e::/56 2>/dev/null
-kill $T_IP 2>/dev/null; wait $T_IP 2>/dev/null
-# Leave nlmon0 up; we'll re-arm capture for the zebra path further down.
-echo "===NLMON-IPROUTE2-DUMP==="
-ip netns exec pe1 tcpdump -nXr /tmp/pe1/iproute2.nlmon 2>&1 | head -60 || true
-install -m 644 $HERE/pe2/bgpd.conf /tmp/pe2/bgpd.conf
+# Per-vrf bgp instances need a real vrf netdev to bind to.  slice1
+# carries the operator-declared `segment interwork` lines that opt
+# the vrf into RT 10:10 / 20:20 imports; received T1ST/T2ST land in
+# slice1's table.
+for ns in pe1 pe2; do
+    ip -n $ns link add slice1 type vrf table 100
+    ip -n $ns link set slice1 up
+done
+
+# --- FRR configs (single frr.conf per ns, same convention as the FRR --------
+# topotests / the e2e harness) ------------------------------------------------
+for ns in pe1 pe2; do
+    install -m 644 $HERE/$ns/frr.conf /tmp/$ns/frr.conf
+done
 
 # --- start zebra + bgpd in each PE namespace ------------------------------
+# Daemons start with no -f; the shared frr.conf is rendered through vtysh
+# once the vty sockets are up so each command is dispatched to the daemon
+# that owns it.
 start_pe() {
     local ns=$1
     local mopts="-d -u root -g root -i /tmp/$ns/mgmtd.pid --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/mgmtd.log"
-    local zopts="-d -u root -g root -f /tmp/$ns/zebra.conf -i /tmp/$ns/zebra.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/zebra.log"
-    local bopts="-d -u root -g root -f /tmp/$ns/bgpd.conf  -i /tmp/$ns/bgpd.pid  -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/bgpd.log"
+    local zopts="-d -u root -g root -i /tmp/$ns/zebra.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/zebra.log"
+    local sopts="-d -u root -g root -i /tmp/$ns/staticd.pid -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/staticd.log"
+    local bopts="-d -u root -g root -i /tmp/$ns/bgpd.pid  -z /tmp/$ns/zserv.api --vty_socket /tmp/$ns -P 0 --log file:/tmp/$ns/bgpd.log"
     ip netns exec $ns $FRR/mgmtd/mgmtd $mopts
     ip netns exec $ns $FRR/zebra/zebra $zopts
+    ip netns exec $ns $FRR/staticd/staticd $sopts
     ip netns exec $ns $FRR/bgpd/bgpd  $bopts
 }
-# Re-arm nlmon capture to record zebra's RTM_NEWROUTE attempts.
+# Stand up an nlmon capture in pe1 BEFORE FRR boots so zebra's
+# RTM_NEWROUTE attempts (in particular the seg6local install) land in
+# the pcap.  Diagnostic-only; check /tmp/pe1/zebra.nlmon if a kernel
+# install ever silently fails again.
+ip -n pe1 link add nlmon0 type nlmon
+ip -n pe1 link set nlmon0 up
 ip netns exec pe1 tcpdump -nXX -i nlmon0 -w /tmp/pe1/zebra.nlmon 2>/dev/null &
 T_ZB=$!
 
 start_pe pe1
 start_pe pe2
 
-# Resolve BGP-MUP nexthop (the SR locator 2001:db8:e::/96).  Use a
-# dummy interface rather than lo: putting the locator on lo makes the
-# kernel reject zebra's seg6local install ("Egress device can not be
-# loopback device" / EINVAL on RTM_NEWROUTE) because the route prefix
-# overlaps an existing local route on the loopback.  A dummy device
-# sidesteps that check while still resolving the BGP /128 SID nexthop.
-for ns in pe1 pe2; do
-    ip -n $ns link add srv6loc type dummy
-    ip -n $ns link set srv6loc up
-    ip -n $ns addr add 2001:db8:e::/96 dev srv6loc nodad
-done
+# Render frr.conf into the running daemons via vtysh.  Each command
+# dispatches to the daemon that owns it (the FRR topotests use the same
+# `vtysh -f /etc/frr/frr.conf` pattern).
+sleep 1
+ip netns exec pe1 $FRR/vtysh/vtysh --vty_socket /tmp/pe1 -f /tmp/pe1/frr.conf
+ip netns exec pe2 $FRR/vtysh/vtysh --vty_socket /tmp/pe2 -f /tmp/pe2/frr.conf
+
+# Underlay route to gobgpd's SR locator 2001:db8:e::/48.  Production
+# deployments populate this via IS-IS / OSPFv3 SRv6 locator ads; the
+# harness uses an explicit static via the BGP-session veth (like the
+# e2e harness does for the remote PE locator), so zebra's NHT marks
+# T1ST/T2ST nexthops active and their seg6local installs reach the
+# kernel.  A connected /48 on a dummy interface alone does not satisfy
+# NHT for cross-vrf BGP nexthops.
+ip netns exec pe1 $FRR/vtysh/vtysh --vty_socket /tmp/pe1 \
+    -c "configure terminal" \
+    -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-pe1g onlink" \
+    -c "exit"
+ip netns exec pe2 $FRR/vtysh/vtysh --vty_socket /tmp/pe2 \
+    -c "configure terminal" \
+    -c "ipv6 route 2001:db8:e::/48 2001:db8:2::1 veth-pe2 onlink" \
+    -c "exit"
 
 # --- start gobgpd in gbgp netns -------------------------------------------
 install -m 644 $HERE/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml
@@ -162,20 +169,27 @@ inject() {
     echo "+ gobgp $*"
     $GOBGP "$@" 2>&1 || echo "  -> FAIL"
 }
-# IPv4-MUP nexthop must be IPv6 (BGP-MUP carries v4 NLRI with v6 NH)
+# IPv4-MUP nexthop must be IPv6 (BGP-MUP carries v4 NLRI with v6 NH).
+# gobgpd encodes the SRv6 SID Structure sub-sub-TLV's `Locator Block
+# Length` straight from the prefix length, so use /24 to land
+# block=24 + node=24 + func=8 = 56; this leaves room for the
+# End.M.GTP4.E synthesis fields (TEA-v4 32 + Args.Mob.Session 40)
+# inside the 128-bit SID and matches the locator declared in pe1/pe2's
+# frr.conf (prefix .../48 block-len 24 node-len 24 func-bits 8).
 inject global rib add -a ipv4-mup isd 10.99.0.0/24 \
-    rd 100:100 prefix 2001:db8:e::/96 locator-node-length 24 \
-    function-length 16 behavior ENDM_GTP4E rt 10:10 \
+    rd 100:100 prefix 2001:db8:e::/24 locator-node-length 24 \
+    function-length 8 behavior ENDM_GTP4E rt 10:10 \
     nexthop 2001:db8:1::2
 
 inject global rib add -a ipv4-mup dsd 10.0.0.250 \
-    rd 100:100 prefix 2001:db8:e::abcd/128 locator-node-length 24 \
-    function-length 16 behavior ENDM_GTP4E rt 10:10 mup 10:10 \
+    rd 100:100 prefix 2001:db8:e::abcd/24 locator-node-length 24 \
+    function-length 8 behavior ENDM_GTP4E rt 10:10 mup 10:10 \
     nexthop 2001:db8:1::2
 
-# T1ST: UE prefix 192.168.1.1/32, prefix-SID 2001:db8:e::1
+# T1ST: UE prefix 192.168.1.1/32, endpoint 10.99.0.1 (must fall under
+# the ISD prefix 10.99.0.0/24 so the resolve-against-ISD lookup hits).
 inject global rib add -a ipv4-mup t1st 192.168.1.1/32 \
-    rd 100:100 rt 10:10 teid 12345 qfi 9 endpoint 10.0.0.1 \
+    rd 100:100 rt 10:10 teid 12345 qfi 9 endpoint 10.99.0.1 \
     prefix-sid 2001:db8:e::1
 
 # T2ST IPv4 endpoint with prefix-SID 2001:db8:e::100 -> End.M.GTP4.E
@@ -299,9 +313,14 @@ echo "===VERIFY==="
 PASS=1
 check_pe() {
     local ns=$1
+    # T2ST seg6local SIDs are incoming-SID routes at the local PE
+    # locator and land in the SR-underlay (default) IPv6 table.  T1ST
+    # H.Encaps installs the UE-prefix route into the per-vrf table
+    # (slice1, the per-vrf bgp instance whose RT matches gobgpd's
+    # T1ST RT).  Match what bgp_mup announces for each direction.
     local v4=$(ip -n "$ns" -6 route show 2>/dev/null | grep -oE 'End\.M\.GTP4\.E' | head -1)
     local v6=$(ip -n "$ns" -6 route show 2>/dev/null | grep -oE 'End\.M\.GTP6\.E' | head -1)
-    local t1=$(ip -n "$ns" -4 route show 192.168.1.1 2>/dev/null | grep -oE 'encap seg6 mode encap')
+    local t1=$(ip -n "$ns" -4 route show 192.168.1.1 vrf slice1 2>/dev/null | grep -oE 'encap seg6 mode encap')
     [ "$v4" = "End.M.GTP4.E" ] || { echo "FAIL: T2ST(v4) End.M.GTP4.E missing on $ns"; PASS=0; }
     [ "$v6" = "End.M.GTP6.E" ] || { echo "FAIL: T2ST(v6) End.M.GTP6.E missing on $ns"; PASS=0; }
     [ -n "$t1" ]               || { echo "FAIL: T1ST seg6 H.Encaps missing for 192.168.1.1 on $ns"; PASS=0; }
