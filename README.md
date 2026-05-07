@@ -50,13 +50,13 @@ srv6-mup-tests/
 │   │   └── pe2/{zebra.conf,bgpd.conf}
 │   ├── frr_interop_mup/                 -- gobgpd -> pe1 (FRR) -> pe2 (FRR), 3-router BGP-MUP control-plane interop
 │   │   ├── frr_interop_mup.sh
-│   │   ├── pe1/{zebra.conf,bgpd.conf}
-│   │   ├── pe2/{zebra.conf,bgpd.conf}
+│   │   ├── pe1/frr.conf
+│   │   ├── pe2/frr.conf
 │   │   └── gbgp/gobgpd.toml
 │   ├── frr_mup_e2e_gobgp_scapy/         -- gobgpd (MUP-C) + pe1/gw1 (FRR) + scapy gNB, full E2E (DL + UL)
 │   │   ├── frr_mup_e2e_gobgp_scapy.sh
-│   │   ├── pe1/{zebra.conf,bgpd.conf}
-│   │   ├── gw1/{zebra.conf,bgpd.conf}
+│   │   ├── pe1/frr.conf
+│   │   ├── gw1/frr.conf
 │   │   └── gbgp/gobgpd.toml
 │   ├── build_tarball.sh                 -- rebuild ~/srv6-mup-bundle.tar.gz from sibling linux/ + iproute2/
 │   ├── build_frr_deb.sh                 -- build FRR Ubuntu Noble debs from sibling frr/ for the bundle
