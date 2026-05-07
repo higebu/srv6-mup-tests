@@ -1,6 +1,6 @@
 # Agent guidelines for this workspace
 
-This repository (`srv6-mup-tests`) is the test harness for an in-progress
+This repository (`srv6-mup-tests`) is the test suite for an in-progress
 contribution that adds RFC 9433 (SRv6 Mobile User Plane) support to two
 upstream projects:
 

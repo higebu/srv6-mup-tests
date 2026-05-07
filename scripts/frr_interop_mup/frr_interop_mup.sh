@@ -75,7 +75,7 @@ for ns in pe1 pe2; do
 done
 
 # --- FRR configs (single frr.conf per ns, same convention as the FRR --------
-# topotests / the e2e harness) ------------------------------------------------
+# topotests / the e2e test) ------------------------------------------------
 for ns in pe1 pe2; do
     install -m 644 $HERE/$ns/frr.conf /tmp/$ns/frr.conf
 done
@@ -116,8 +116,8 @@ ip netns exec pe2 $FRR/vtysh/vtysh --vty_socket /tmp/pe2 -f /tmp/pe2/frr.conf
 
 # Underlay route to gobgpd's SR locator 2001:db8:e::/48.  Production
 # deployments populate this via IS-IS / OSPFv3 SRv6 locator ads; the
-# harness uses an explicit static via the BGP-session veth (like the
-# e2e harness does for the remote PE locator), so zebra's NHT marks
+# tests use an explicit static via the BGP-session veth (like the
+# e2e test does for the remote PE locator), so zebra's NHT marks
 # T1ST/T2ST nexthops active and their seg6local installs reach the
 # kernel.  A connected /48 on a dummy interface alone does not satisfy
 # NHT for cross-vrf BGP nexthops.
@@ -337,7 +337,7 @@ fi
 kill $T_ZB 2>/dev/null; wait $T_ZB 2>/dev/null
 # Persist the captures out of vng for offline diff (set NLMON_OUT externally).
 # /tmp is overmounted with tmpfs at the top of the script, so callers must
-# pass a path that lives outside /tmp (typically the harness repo).
+# pass a path that lives outside /tmp (typically the tests repo).
 if [ -n "${NLMON_OUT:-}" ]; then
     mkdir -p "$NLMON_OUT" 2>/dev/null
     cp /tmp/pe1/iproute2.nlmon "$NLMON_OUT/" 2>&1

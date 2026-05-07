@@ -132,7 +132,7 @@ Built from the upstream-bound patch series:
 
 - Linux: <https://github.com/higebu/linux/tree/srv6-mup>
 - iproute2: <https://github.com/higebu/iproute2/tree/srv6-mup>
-- Test harness: <https://github.com/higebu/srv6-mup-tests>
+- Test suite: <https://github.com/higebu/srv6-mup-tests>
 
 ## Bundle contents
 

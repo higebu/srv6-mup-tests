@@ -1,6 +1,6 @@
 # srv6-mup-tests
 
-Test harness for the SRv6 Mobile User Plane (RFC 9433) reference stack.
+Test suite for the SRv6 Mobile User Plane (RFC 9433) reference stack.
 Three independently versioned components, all built for Ubuntu 24.04 LTS:
 
 - Linux kernel patch series — <https://github.com/higebu/linux/tree/b4/seg6-mobile>
@@ -21,7 +21,7 @@ This repo holds:
 2. Five VPP 25.10 interop scenarios (one per kernel MUP behavior under
    test), with merged pcaps captured at three points along the path
    (test ingress, SR-domain wire, test egress).
-3. Three FRR BGP-MUP harnesses: FRR-only `segment` origination, gobgpd
+3. Three FRR BGP-MUP tests: FRR-only `segment` origination, gobgpd
    ↔ FRR ↔ FRR control-plane interop, and a full E2E (gobgpd +
    FRR + scapy) including data-plane forwarding.
 4. Reference rtnetlink (nlmon) captures of zebra vs. iproute2 SID
@@ -38,7 +38,7 @@ srv6-mup-tests/
 │   ├── topology.md            -- per-scenario netns + veth topology
 │   ├── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
 │   └── release.md             -- how to cut a vNN GitHub release
-├── scripts/                   -- harness scripts
+├── scripts/                   -- test scripts
 │   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6) -> VPP end.m.gtp6.e (SRv6 -> GTP-U)
@@ -68,7 +68,7 @@ srv6-mup-tests/
 └── logs/                      -- runtime logs (.gitignore'd)
 ```
 
-The harness assumes a sibling layout — `linux/`, `iproute2/`, `frr/`,
+The test scripts assume a sibling layout — `linux/`, `iproute2/`, `frr/`,
 and `srv6-mup-tests/` all under the same parent directory.  Scripts
 derive paths from `$0` so any parent location works.
 
@@ -81,19 +81,19 @@ is the *opposite* of the SR-domain-side encap/decap reading.
 
 The fastest way to a working test bench is to install the prebuilt
 bundle from [Releases](https://github.com/higebu/srv6-mup-tests/releases),
-then clone this repo and run the harnesses.  See "Bundle install"
+then clone this repo and run the tests.  See "Bundle install"
 below.
 
 ### Prerequisites
 
-For running the harnesses (all paths):
+For running the tests (all paths):
 
 - `virtme-ng` — `pip install --user virtme-ng` or `apt install virtme-ng`
 - `python3-scapy`, `tcpdump`, `wireshark-common` (for `mergecap` and
   `tshark`)
 - For the VPP interop path: VPP 25.10 + `vpp-plugin-core` from the FDio
   `2510` packagecloud repo (see [`docs/vpp-interop.md`](docs/vpp-interop.md))
-- For the FRR harnesses: a built `frr/` sibling, plus the patched
+- For the FRR tests: a built `frr/` sibling, plus the patched
   `gobgp/gobgpd` under `.bin/` for the `frr_interop_mup.sh` and
   `frr_mup_e2e_gobgp_scapy.sh` scenarios
 
@@ -214,7 +214,7 @@ Expected:
 ===VPP-INTEROP-END_M_GTP6_D_DI=== PASS
 ```
 
-### Run the FRR BGP-MUP harnesses
+### Run the FRR BGP-MUP tests
 
 Three scenarios, increasing in scope:
 
@@ -268,7 +268,7 @@ End.MAP (§6.2) and End.Limit (§6.8) cannot be exercised against VPP
 because the VPP `srv6-mobile` plugin (Arrcus contribution) does not
 implement either; they are covered by the kernel selftests only.
 
-### FRR BGP-MUP harnesses (draft-ietf-bess-mup-safi)
+### FRR BGP-MUP tests (draft-ietf-bess-mup-safi)
 
 | Script | Topology | Asserts |
 |---|---|---|

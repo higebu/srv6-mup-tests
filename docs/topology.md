@@ -64,7 +64,7 @@ Per scenario (column "Linux/VPP transform" reads "what the node emits"):
 | `vpp_interop_end_m_gtp6_d_di.sh` | End.M.GTP6.D.Di §6.4 (GTP-U → SRv6 inline) | End (RFC 8986 transit) | UL drop-in | gNB / UL source | next-hop SR endpoint |
 
 > Note: the `gnb` and `dn` netns names denote *test ingress* and
-> *test egress* of the harness, **not** 3GPP roles. In E-family
+> *test egress* of the tests, **not** 3GPP roles. In E-family
 > scenarios the test ingress is on the DL source side (= upstream of
 > MUP-PE) and the test egress is the gNB receiving the GTP-U;
 > in D-family scenarios the mapping is the opposite. The IP
@@ -123,7 +123,7 @@ flowchart LR
 
 tcpdump is run at three points:
 
-- gnb: `veth-g` — test ingress GTP-U as the harness's gNB-role end sees
+- gnb: `veth-g` — test ingress GTP-U as the tests' gNB-role end sees
   it.  In these UL D-family scenarios the gnb netns is acting as gNB.
 - root ns: `veth-e-vpp` — SR-domain wire (the emitted SRv6 packet).
 - dn ns: `veth-f-dn` — test egress (post-decap GTP-U seen by the

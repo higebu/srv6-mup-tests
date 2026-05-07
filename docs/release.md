@@ -108,7 +108,7 @@ SRv6 Mobile User Plane (RFC 9433) Ubuntu 24.04 LTS deb bundle.
 
 - One bullet per user-visible change (component + what it does).
 
-For install instructions, asset descriptions, and harness usage, see the
+For install instructions, asset descriptions, and test usage, see the
 [README](https://github.com/higebu/srv6-mup-tests#bundle-install-ubuntu-2404-lts).
 ```
 

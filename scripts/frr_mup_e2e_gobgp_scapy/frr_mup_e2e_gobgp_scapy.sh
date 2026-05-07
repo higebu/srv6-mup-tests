@@ -253,7 +253,7 @@ $VTYSH_GW1 -f /tmp/gw1/frr.conf
 sleep 1
 # SR underlay routes (the remote MUP-PE/GW locators) live in the
 # default vrf — production deployments populate them via IS-IS or
-# OSPFv3 SRv6 locator advertisements; the harness uses static routes
+# OSPFv3 SRv6 locator advertisements; the tests use static routes
 # in default vrf for the same effect.  These could move into frr.conf
 # but staticd needs them shipped via vtysh because in-conf static
 # routes only land after staticd reads its zserv connection.  zebra's
@@ -333,7 +333,7 @@ $GOBGP global rib add -a ipv4-mup t2st $T2ST_EP \
 # RT 99:99 doesn't match any vrf-red `segment` import on pe1/gw1.  These
 # routes must be received into the default-vrf MUP RIB but MUST NOT
 # leak into vrf-red's table 100 — that's the L3VPN-style RT filter
-# the harness verifies in the verdict block below.
+# the tests verify in the verdict block below.
 UE_PFX_NORT=192.168.10.99
 T1ST_EP_NORT=10.99.0.99
 T2ST_EP_NORT=10.99.0.200
@@ -356,7 +356,7 @@ echo "===GW1-BGP-MUP-DETAIL==="
 $VTYSH_GW1 -c 'show bgp ipv4 mup all detail-routes' 2>&1 | head -80
 
 # BGP-MUP T1ST/T2ST FIB installs land in the per-vrf table associated
-# with the segment's RT-import (vrf-red, table 100 in this harness).
+# with the segment's RT-import (vrf-red, table 100 in these tests).
 # Inspect the route show under that table — main FIB stays empty for
 # these prefixes, which the verdict block below verifies.
 echo "===PE1-IP-ROUTE-VRF-RED==="
