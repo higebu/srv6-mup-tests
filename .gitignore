@@ -5,3 +5,6 @@ logs/*.log
 *.swp
 *.swo
 .DS_Store
+
+# local tooling
+.claude/
