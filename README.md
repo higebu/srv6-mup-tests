@@ -21,9 +21,11 @@ This repo holds:
 2. Five VPP 25.10 interop scenarios (one per kernel MUP behavior under
    test), with merged pcaps captured at three points along the path
    (test ingress, SR-domain wire, test egress).
-3. Three FRR BGP-MUP tests: FRR-only `segment` origination, gobgpd
-   ↔ FRR ↔ FRR control-plane interop, and a full E2E (gobgpd +
-   FRR + scapy) including data-plane forwarding.
+3. Four FRR BGP-MUP tests: FRR-only `segment` origination, gobgpd
+   ↔ FRR ↔ FRR control-plane interop, a full E2E (gobgpd + FRR +
+   scapy) including data-plane forwarding, and a variant of the E2E
+   that distributes the SR underlay via IS-IS instead of static
+   routes.
 4. Reference rtnetlink (nlmon) captures of zebra vs. iproute2 SID
    programming for debugging the netlink attribute layout.
 
@@ -53,8 +55,13 @@ srv6-mup-tests/
 │   │   ├── pe1/frr.conf
 │   │   ├── pe2/frr.conf
 │   │   └── gbgp/gobgpd.toml
-│   ├── frr_mup_e2e_gobgp_scapy/         -- gobgpd (MUP-C) + pe1/gw1 (FRR) + scapy gNB, full E2E (DL + UL)
+│   ├── frr_mup_e2e_gobgp_scapy/         -- gobgpd (MUP-C) + pe1/gw1 (FRR) + scapy gNB, full E2E (DL + UL); SR underlay via static
 │   │   ├── frr_mup_e2e_gobgp_scapy.sh
+│   │   ├── pe1/frr.conf
+│   │   ├── gw1/frr.conf
+│   │   └── gbgp/gobgpd.toml
+│   ├── frr_mup_e2e_isis_gobgp_scapy/    -- same E2E topology, SR underlay via IS-IS (locator distribution + adjacency)
+│   │   ├── frr_mup_e2e_isis_gobgp_scapy.sh
 │   │   ├── pe1/frr.conf
 │   │   ├── gw1/frr.conf
 │   │   └── gbgp/gobgpd.toml
