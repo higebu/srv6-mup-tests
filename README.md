@@ -119,16 +119,29 @@ Prebuilt artifacts are attached to each
 - `bzImage-...` — the same kernel image extracted, for booting under
   `vng --run ./bzImage-...` without installing the deb
 - `iproute2*.deb`, `iproute2-doc*.deb` — patched iproute2
-- `frr*.deb` — FRR with BGP-MUP SAFI (needs the FRR apt repo for
-  `libyang2 >= 2.1.128`; see release notes)
+- `frr*.deb` — FRR with BGP-MUP SAFI (depends on
+  `libyang2 >= 2.1.128`, which Noble does not ship; install it from
+  the upstream FRR apt repo first — see below).
 
 ```bash
 mkdir bundle && cd bundle
 gh release download v30 --repo higebu/srv6-mup-tests
+
 # kernel + iproute2
 sudo apt-get install -y ./linux-*.deb ./iproute2*.deb
-# FRR (after adding the FRR apt repo for libyang2 >= 2.1.128)
+
+# Add the FRR apt repo so libyang2 (>= 2.1.128) resolves, then install
+# FRR.  The repo carries only the libyang2 dependency we need; the
+# bundle's frr*.deb are still preferred over frr-stable's.
+sudo install -m 0644 -D /dev/stdin /usr/share/keyrings/frr.gpg \
+    < <(curl -fsSL https://deb.frrouting.org/frr/keys.gpg)
+echo "deb [signed-by=/usr/share/keyrings/frr.gpg] https://deb.frrouting.org/frr noble frr-stable" \
+    | sudo tee /etc/apt/sources.list.d/frr.list
+sudo apt-get update
+sudo apt-get install -y libyang2
 sudo apt-get install -y ./frr*.deb
+
+# Boot the patched kernel.
 sudo grub-reboot "Advanced options for Ubuntu>Ubuntu, with Linux 7.1.0-rc1-srv6-mup-..."
 sudo reboot
 ```
