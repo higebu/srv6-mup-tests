@@ -66,9 +66,10 @@ for ns in pe1 pe2; do
 done
 
 # Per-vrf bgp instances need a real vrf netdev to bind to.  slice1
-# carries the operator-declared `segment interwork` lines that opt
-# the vrf into RT 10:10 / 20:20 imports; received T1ST/T2ST land in
-# slice1's table.
+# carries the operator-declared unicast `network` + `mup export`
+# directives that drive ISD origination, plus the `route-target
+# import` filter that opts the vrf into RT 10:10 / 20:20 imports;
+# received T1ST/T2ST land in slice1's table.
 for ns in pe1 pe2; do
     ip -n $ns link add slice1 type vrf table 100
     ip -n $ns link set slice1 up

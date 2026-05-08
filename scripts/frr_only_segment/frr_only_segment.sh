@@ -1,8 +1,9 @@
 #!/bin/bash
 # FRR-only BGP-MUP test: no external controller (gobgp).
 #
-# pe1 (FRR) originates ISD/DSD via the new `segment interwork|direct`
-# vty commands; pe2 receives them.  This verifies FRR's MUP-PE/MUP-GW
+# pe1 (FRR) originates ISD via the per-vrf unicast leak (`network` +
+# `rd|rt|sid mup export`) and DSD via the `segment direct` mup-AF
+# keyword; pe2 receives them.  This verifies FRR's MUP-PE/MUP-GW
 # origination path independently of any external MUP-C.
 #
 # Topology:
@@ -40,12 +41,13 @@ for ns in pe1 pe2; do
     ip netns exec $ns sysctl -wq net.ipv6.conf.all.forwarding=1
 done
 
-# `segment interwork` / `segment direct` only live under a non-default
-# vrf bgp instance (RFC 8986 §4.7-§4.8: End.DT4/DT6 are vrf-mandatory;
-# the cleanest split puts the MUP session in the default
-# vrf instance and the per-slice originations in their own vrf instance).
-# pe1 needs an actual vrf netdev for `router bgp 65001 vrf slice1` to
-# bind to; pe2 only receives, so the default vrf is enough.
+# Per-vrf unicast leak (`rd|rt|sid mup export`) and `segment direct`
+# only live under a non-default vrf bgp instance (RFC 8986 Section 4.7-
+# Section 4.8: End.DT4/DT6 are vrf-mandatory; the cleanest split puts
+# the MUP session in the default vrf instance and the per-slice
+# originations in their own vrf instance).  pe1 needs an actual vrf
+# netdev for `router bgp 65001 vrf slice1` to bind to; pe2 only
+# receives, so the default vrf is enough.
 ip -n pe1 link add slice1 type vrf table 100
 ip -n pe1 link set slice1 up
 ip netns exec pe1 sysctl -wq net.vrf.strict_mode=1
@@ -96,11 +98,12 @@ echo "===PE1-BGP-SRV6==="
 $VTYSH_PE1 -c 'show bgp segment-routing srv6' 2>&1 | grep -vE "vtysh.conf|Configuration file" | head -20
 
 echo "===PE1-ORIGINATE==="
-# `segment interwork|direct` for slice1 are declared directly in
-# pe1/bgpd.conf under `router bgp 65001 vrf slice1`; bgpd defers each
-# `segment` line until the SRv6 locator chunks arrive from zebra and
-# replays them via bgp_mup_replay_origins_all() (mirrors L3VPN's
-# `sid vpn export auto` post-locator replay).
+# ISD via unicast `network` + `mup export` and DSD via `segment direct`
+# for slice1 are declared directly in pe1/bgpd.conf under `router bgp
+# 65001 vrf slice1`; bgpd defers each origination until the SRv6
+# locator chunks arrive from zebra and replays them via
+# bgp_mup_replay_origins_all() (mirrors L3VPN's `sid vpn export auto`
+# post-locator replay).
 
 sleep 2
 
@@ -147,31 +150,35 @@ ip netns exec pe1 ip -6 route show table local | grep -E "encap seg6local" || tr
 echo "===PE1-RUNNING-CONFIG-MUP==="
 $VTYSH_PE1 -c 'show running-config' 2>&1 | sed -n '/address-family ipv4 mup/,/exit-address-family/p; /address-family ipv6 mup/,/exit-address-family/p'
 
-# A3 race coverage: add+remove within the same vtysh transaction (no sleep
-# between add and `no`).  This exercises bgp_mup_pending_pop_for_withdraw —
-# the SID alloc reply may or may not have arrived from zebra by the time
-# `no` runs, so both code paths (cancel-while-pending vs withdraw-after-RIB)
-# need to coexist without leaking the pending entry or a stale BGP route.
+# Race coverage: add+remove a `network` line under the per-vrf unicast
+# AF in the same vtysh transaction (no sleep between add and `no`).
+# This exercises the unicast-RIB → BGP-MUP leak race — the unicast
+# best-path selection may or may not have triggered an ISD originate
+# by the time `no network` runs, so both cancel-while-pending and
+# withdraw-after-leak code paths need to coexist without leaking a
+# pending entry or a stale BGP-MUP route.
 echo "===PE1-RACE-CANCEL==="
 $VTYSH_PE1 -c 'configure' \
-    -c 'router bgp 65001' \
-    -c 'address-family ipv4 mup' \
-    -c 'segment interwork 10.77.0.0/24 rd 100:77 rt 65001:77' \
-    -c 'no segment interwork 10.77.0.0/24 rd 100:77 rt 65001:77' \
+    -c 'router bgp 65001 vrf slice1' \
+    -c 'address-family ipv4 unicast' \
+    -c 'network 10.77.0.0/24' \
+    -c 'no network 10.77.0.0/24' \
     -c 'exit-address-family' 2>&1 | grep -vE "vtysh.conf|Configuration file" | head -5
 sleep 2
 race_left=$($VTYSH_PE1 -c 'show bgp ipv4 mup all' 2>/dev/null | grep -c "10.77.0.0/24")
-race_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "segment interwork 10.77.0.0/24")
+race_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "network 10.77.0.0/24")
 [ "$race_left" -eq 0 ] || { echo "FAIL: race-cancel ISD still in RIB"; PASS=0; }
-[ "$race_cfg" -eq 0 ] || { echo "FAIL: race-cancel ISD still in running-config"; PASS=0; }
+[ "$race_cfg" -eq 0 ] || { echo "FAIL: race-cancel network still in running-config"; PASS=0; }
 
-# Verify the running-config emits the operator's segment commands.
-isd_v4_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "segment interwork 10.99.0.0/24")
+# Verify the running-config emits the operator's origination directives.
+isd_v4_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "network 10.99.0.0/24")
 dsd_v4_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "segment direct 10.0.0.250")
-isd_v6_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "segment interwork 2001:db8:99::/64")
-[ "$isd_v4_cfg" -ge 1 ] || { echo "FAIL: ISD(v4) not in running-config"; PASS=0; }
+isd_v6_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "network 2001:db8:99::/64")
+mup_export_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -cE "(rd|rt|sid) mup export")
+[ "$isd_v4_cfg" -ge 1 ] || { echo "FAIL: ISD(v4) network not in running-config"; PASS=0; }
 [ "$dsd_v4_cfg" -ge 1 ] || { echo "FAIL: DSD(v4) not in running-config"; PASS=0; }
-[ "$isd_v6_cfg" -ge 1 ] || { echo "FAIL: ISD(v6) not in running-config"; PASS=0; }
+[ "$isd_v6_cfg" -ge 1 ] || { echo "FAIL: ISD(v6) network not in running-config"; PASS=0; }
+[ "$mup_export_cfg" -ge 6 ] || { echo "FAIL: mup export directives not in running-config (got $mup_export_cfg, expect >=6)"; PASS=0; }
 
 if [ "$PASS" -eq 1 ]; then
     echo "===FRR-ONLY-SEGMENT=== PASS"
