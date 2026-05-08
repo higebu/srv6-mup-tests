@@ -343,7 +343,7 @@ $GOBGP global rib add -a ipv4-mup t1st $UE_PFX/32 \
 	endpoint $T1ST_EP source $T1ST_EP 2>&1 || echo "T1ST inject FAIL"
 
 $GOBGP global rib add -a ipv4-mup t2st $T2ST_EP \
-	rd 100:100 endpoint-address-length 32 teid $TEID \
+	rd 100:100 endpoint-address-length 64 teid $TEID \
 	rt 20:20 mup 10:10 2>&1 || echo "T2ST inject FAIL"
 
 # Negative RT-import injects: same RD and resolvable ISD/DSD-segId, but
@@ -359,7 +359,7 @@ $GOBGP global rib add -a ipv4-mup t1st $UE_PFX_NORT/32 \
 	endpoint $T1ST_EP_NORT source $T1ST_EP_NORT 2>&1 || echo "T1ST(no-RT) inject FAIL"
 
 $GOBGP global rib add -a ipv4-mup t2st $T2ST_EP_NORT \
-	rd 100:100 endpoint-address-length 32 teid $TEID \
+	rd 100:100 endpoint-address-length 64 teid $TEID \
 	rt 99:99 mup 10:10 2>&1 || echo "T2ST(no-RT) inject FAIL"
 
 sleep 3
