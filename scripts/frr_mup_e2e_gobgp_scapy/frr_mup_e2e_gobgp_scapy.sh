@@ -321,13 +321,17 @@ echo "  pe1 DSD SID = ${PE_DSD_SID:-<not-yet-allocated>}"
 
 # Inject T1ST + T2ST from gobgpd.
 echo "===INJECT==="
+# Per-direction RT scoping: T1ST carries the DL-direction RT (matches
+# the ISD's RT, imported by pe1) and T2ST carries the UL-direction RT
+# (matches the DSD's RT, imported by gw1).  Each node thus imports
+# only the routes it needs.
 $GOBGP global rib add -a ipv4-mup t1st $UE_PFX/32 \
 	rd 100:100 rt 10:10 teid $TEID qfi $QFI \
 	endpoint $T1ST_EP source $T1ST_EP 2>&1 || echo "T1ST inject FAIL"
 
 $GOBGP global rib add -a ipv4-mup t2st $T2ST_EP \
 	rd 100:100 endpoint-address-length 32 teid $TEID \
-	rt 10:10 mup 10:10 2>&1 || echo "T2ST inject FAIL"
+	rt 20:20 mup 10:10 2>&1 || echo "T2ST inject FAIL"
 
 # Negative RT-import injects: same RD and resolvable ISD/DSD-segId, but
 # RT 99:99 doesn't match any vrf-red `segment` import on pe1/gw1.  These
