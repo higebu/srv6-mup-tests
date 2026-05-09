@@ -52,10 +52,12 @@ from hypothesis import HealthCheck, given, settings, strategies as st
 from _helpers import (
     DEFAULT_AF_V4_CONTEXT,
     VRF_AF_CONTEXT_V4,
+    VRF_AF_CONTEXT_V6,
     VRF_AF_DSD_ENTER_V4,
     VRF_AF_DSD_EXIT,
     VRF_AF_EXIT,
     _baseline_mup_clean,
+    _extract_mup_af_body,
     _running_config,
     _vtysh,
 )
@@ -73,7 +75,7 @@ from _helpers import (
 # session-scoped and we reset state explicitly per example.
 settings.register_profile(
     "cli-props",
-    max_examples=int(os.environ.get("HYPOTHESIS_MAX_EXAMPLES", "25")),
+    max_examples=int(os.environ.get("HYPOTHESIS_MAX_EXAMPLES") or "25"),
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
@@ -328,3 +330,136 @@ def test_prop_route_map_only_import_export(direction):
     )
     assert rejected, f"expected vtysh rejection for direction {direction!r}, got {out!r}"
     assert f"route-map {direction} RMAP-X" not in _running_config()
+
+
+# ---------------------------------------------------------------------------
+# Property 6 — writeback fixed-point (full-config round-trip)
+# ---------------------------------------------------------------------------
+#
+# `bgp_mup_config_write_af` emits the per-(vrf, afi) MUP policy as a
+# block of vtysh-style commands.  For the writeback to be a valid serial
+# format, feeding the emitted body back into a freshly-reset MUP AF must
+# yield byte-identical output on the next dump.  Any drift (re-ordered
+# fields, missing line, line emitted in the wrong context) shows up as
+# a failing example.
+#
+# These properties exercise the writeback path with multi-knob configs
+# that the single-DEFPY round-trip properties (Property 1) don't reach:
+# DSD with all sub-block fields set, ISD with sid + nexthop on top, and
+# the same on the IPv6 MUP AF.
+
+behavior_kw = st.sampled_from(["dt4", "dt6", "dt46"])
+opt_sid = st.one_of(
+    st.none(),
+    st.just(("auto", None)),
+    ipv6_str.map(lambda v: ("explicit", v)),
+)
+opt_nexthop_v4 = st.one_of(st.none(), ipv4_str)
+opt_nexthop_v6 = st.one_of(st.none(), ipv6_str)
+opt_rt_dir = st.one_of(st.none(), st.sampled_from(["import", "export", "both"]))
+
+
+def _emit_sid(sid):
+    if sid is None:
+        return []
+    kind, val = sid
+    if kind == "auto":
+        return ["sid auto"]
+    return [f"sid explicit {val}"]
+
+
+def _replay_into_mup_af(ctx, body):
+    """Reset slice1 + slice2, then push @body inside @ctx address-family."""
+    _reset()
+    _vtysh(*ctx, *body, *VRF_AF_EXIT)
+
+
+@given(
+    rd=rd_valid,
+    addr=ipv4_str,
+    behavior=behavior_kw,
+    seg_id=seg_id_valid,
+    sid=opt_sid,
+    nexthop=opt_nexthop_v4,
+    rt_dir=opt_rt_dir,
+    rt=rt_valid,
+)
+def test_prop_dsd_writeback_fixed_point_v4(
+    rd, addr, behavior, seg_id, sid, nexthop, rt_dir, rt
+):
+    """Full DSD policy on slice1's IPv4 MUP AF.  Apply, dump, reset,
+    re-apply the dump, dump again, and assert the two body slices are
+    identical."""
+    _reset()
+    cmds = [f"rd {rd}"]
+    cmds += _emit_sid(sid)
+    if nexthop is not None:
+        cmds.append(f"nexthop {nexthop}")
+    if rt_dir is not None:
+        cmds.append(f"rt {rt_dir} {rt}")
+    cmds += [
+        "segment direct",
+        f"address {addr}",
+        f"behavior {behavior}",
+        f"segment-id {seg_id}",
+        "exit",
+    ]
+    _vtysh(*VRF_AF_CONTEXT_V4, *cmds, *VRF_AF_EXIT)
+    body1 = _extract_mup_af_body(_running_config(), afi="ipv4")
+    assert body1, f"empty MUP-AF body after applying {cmds!r}"
+
+    _replay_into_mup_af(VRF_AF_CONTEXT_V4, body1)
+    body2 = _extract_mup_af_body(_running_config(), afi="ipv4")
+    assert body1 == body2, f"writeback drift:\n{body1}\n!=\n{body2}"
+
+
+@given(
+    rd=rd_valid,
+    sid=opt_sid,
+    nexthop=opt_nexthop_v4,
+    rt_dir=opt_rt_dir,
+    rt=rt_valid,
+)
+def test_prop_isd_writeback_fixed_point_v4(rd, sid, nexthop, rt_dir, rt):
+    """ISD policy on slice1's IPv4 MUP AF: rd + segment interwork,
+    plus optional sid / nexthop / rt knobs."""
+    _reset()
+    cmds = [f"rd {rd}", "segment interwork"]
+    cmds += _emit_sid(sid)
+    if nexthop is not None:
+        cmds.append(f"nexthop {nexthop}")
+    if rt_dir is not None:
+        cmds.append(f"rt {rt_dir} {rt}")
+    _vtysh(*VRF_AF_CONTEXT_V4, *cmds, *VRF_AF_EXIT)
+    body1 = _extract_mup_af_body(_running_config(), afi="ipv4")
+    assert body1
+
+    _replay_into_mup_af(VRF_AF_CONTEXT_V4, body1)
+    body2 = _extract_mup_af_body(_running_config(), afi="ipv4")
+    assert body1 == body2, f"writeback drift:\n{body1}\n!=\n{body2}"
+
+
+@given(
+    rd=rd_valid,
+    sid=opt_sid,
+    nexthop=opt_nexthop_v6,
+    rt_dir=opt_rt_dir,
+    rt=rt_valid,
+)
+def test_prop_isd_writeback_fixed_point_v6(rd, sid, nexthop, rt_dir, rt):
+    """Same as v4 but on slice1's IPv6 MUP AF — exercises the
+    afi-agnostic writeback path on AFI_IP6."""
+    _reset()
+    cmds = [f"rd {rd}", "segment interwork"]
+    cmds += _emit_sid(sid)
+    if nexthop is not None:
+        cmds.append(f"nexthop {nexthop}")
+    if rt_dir is not None:
+        cmds.append(f"rt {rt_dir} {rt}")
+    _vtysh(*VRF_AF_CONTEXT_V6, *cmds, *VRF_AF_EXIT)
+    body1 = _extract_mup_af_body(_running_config(), afi="ipv6")
+    assert body1
+
+    _replay_into_mup_af(VRF_AF_CONTEXT_V6, body1)
+    body2 = _extract_mup_af_body(_running_config(), afi="ipv6")
+    assert body1 == body2, f"writeback drift:\n{body1}\n!=\n{body2}"

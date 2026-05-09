@@ -84,6 +84,40 @@ def _running_config():
     return _vtysh("show running-config").stdout
 
 
+def _extract_mup_af_body(rc, vrf="slice1", afi="ipv4"):
+    """Pull the body lines (whitespace-stripped) inside
+    `router bgp 65001 vrf {vrf} / address-family {afi} mup`.
+
+    Used by the writeback fixed-point properties: dump running-config,
+    extract the MUP AF body, reset, replay the body, dump again, compare.
+    A drift between dump-1 and dump-2 means `bgp_mup_config_write_af`
+    emitted a line shape the parser doesn't round-trip back to the same
+    state.
+    """
+    router_marker = f"router bgp 65001 vrf {vrf}"
+    af_marker = f"address-family {afi} mup"
+    in_router = False
+    in_af = False
+    body = []
+    for line in rc.splitlines():
+        if not in_router:
+            if line.rstrip() == router_marker:
+                in_router = True
+            continue
+        # Bail at the next top-level block (`router ...` or unindented exit).
+        if line and not line.startswith(" "):
+            break
+        stripped = line.strip()
+        if not in_af:
+            if stripped == af_marker:
+                in_af = True
+            continue
+        if stripped == "exit-address-family":
+            break
+        body.append(stripped)
+    return body
+
+
 def _wait_until(predicate, msg, timeout=20.0, interval=0.5):
     deadline = time.time() + timeout
     while time.time() < deadline:
