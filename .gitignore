@@ -8,3 +8,9 @@ logs/*.log
 
 # local tooling
 .claude/
+
+# python build / test artefacts (CLI matrix uses uv-managed venv)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/

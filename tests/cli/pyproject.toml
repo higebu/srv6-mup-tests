@@ -1,0 +1,14 @@
+[project]
+name = "srv6-mup-cli-props"
+version = "0.0.0"
+description = "BGP-MUP CLI property tests"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=7.4",
+    "hypothesis>=6.100",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+addopts = "-ra"

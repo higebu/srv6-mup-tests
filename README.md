@@ -45,10 +45,26 @@ srv6-mup-tests/
 │   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6) -> VPP end.m.gtp6.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (GTP-U -> SRv6) -> Linux End.M.GTP6.E (SRv6 -> GTP-U)
 │   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (GTP-U -> SRv6 inline) -> VPP End (RFC 8986 transit)
+├── tests/
+│   └── cli/                   -- single-PE pytest+hypothesis property tests
+│                                 for BGP-MUP CLI (see docs/cli-props.md)
 ├── pcaps/                     -- merged pcaps from a recent run
 │                                 (test ingress + SR-domain wire + test egress)
 └── logs/                      -- runtime logs (.gitignore'd)
 ```
+
+## BGP-MUP CLI property tests (`tests/cli/`)
+
+A single-PE pytest + `hypothesis` test suite exercises FRR's BGP-MUP
+vtysh surface for round-trip preservation, context guards, and
+malformed-input rejection.  Run it with:
+
+```bash
+scripts/run_cli_props.sh                 # everything (host + sudo, ~30s)
+```
+
+See [`docs/cli-props.md`](docs/cli-props.md) for the property
+catalogue, the input strategies, and the validation gate evidence.
 
 ## Quick start
 
