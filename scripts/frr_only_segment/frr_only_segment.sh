@@ -18,7 +18,7 @@
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
-FRR=$ROOT/frr
+FRR=${FRR:-$ROOT/frr}
 
 export PATH="$ROOT/iproute2/ip:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
@@ -159,27 +159,18 @@ $VTYSH_PE1 -c 'show running-config' 2>&1 | sed -n '/address-family ipv4 mup/,/ex
 # `no network` runs, so both cancel-while-pending and withdraw-after-
 # originate code paths need to coexist without leaking a pending entry
 # or a stale BGP-MUP route.
-#
-# FOLLOWUP-MUP-AF-NO-NETWORK: temporarily disabled.  After the move to
-# `address-family ipv[46] mup` direct origination, `no network` removes
-# the line from running-config but leaves the route in the SAFI_MUP RIB
-# (no WITHDRAW emitted).  Re-enable once
-# wip/20260510-001805-bug-mup-af-network-no-network-no-withdraw.md
-# is fixed in bgpd.
-if false; then
-    echo "===PE1-RACE-CANCEL==="
-    $VTYSH_PE1 -c 'configure' \
-        -c 'router bgp 65001 vrf slice1' \
-        -c 'address-family ipv4 mup' \
-        -c 'network 10.77.0.0/24' \
-        -c 'no network 10.77.0.0/24' \
-        -c 'exit-address-family' 2>&1 | grep -vE "vtysh.conf|Configuration file" | head -5
-    sleep 2
-    race_left=$($VTYSH_PE1 -c 'show bgp ipv4 mup all' 2>/dev/null | grep -c "10.77.0.0/24")
-    race_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "network 10.77.0.0/24")
-    [ "$race_left" -eq 0 ] || { echo "FAIL: race-cancel ISD still in RIB"; PASS=0; }
-    [ "$race_cfg" -eq 0 ] || { echo "FAIL: race-cancel network still in running-config"; PASS=0; }
-fi
+echo "===PE1-RACE-CANCEL==="
+$VTYSH_PE1 -c 'configure' \
+    -c 'router bgp 65001 vrf slice1' \
+    -c 'address-family ipv4 mup' \
+    -c 'network 10.77.0.0/24' \
+    -c 'no network 10.77.0.0/24' \
+    -c 'exit-address-family' 2>&1 | grep -vE "vtysh.conf|Configuration file" | head -5
+sleep 2
+race_left=$($VTYSH_PE1 -c 'show bgp ipv4 mup all' 2>/dev/null | grep -c "10.77.0.0/24")
+race_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "network 10.77.0.0/24")
+[ "$race_left" -eq 0 ] || { echo "FAIL: race-cancel ISD still in RIB"; PASS=0; }
+[ "$race_cfg" -eq 0 ] || { echo "FAIL: race-cancel network still in running-config"; PASS=0; }
 
 # Verify the running-config emits the operator's origination directives.
 isd_v4_cfg=$($VTYSH_PE1 -c 'show running-config' 2>/dev/null | grep -c "network 10.99.0.0/24")
