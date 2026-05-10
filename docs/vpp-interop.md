@@ -151,7 +151,7 @@ See [`topology.md`](topology.md) for ASCII diagrams. Summary:
 |---|---|
 | `vpp_interop_h_m_gtp4_d.sh` | `sr localsid prefix 2001:db8:f::/56 behavior end.m.gtp4.e v4src_position 96 fib-table 0` |
 | `vpp_interop_end_m_gtp4_e.sh` | `sr policy add bsid 2001:db8:5::1 next 2001:db8:f::a:6300:214:0:123 encap` + `sr steer l3 10.99.0.0/24 via bsid 2001:db8:5::1` |
-| `vpp_interop_end_m_gtp6_d.sh` | `sr localsid prefix 2001:db8:e::/88 behavior end.m.gtp6.e fib-table 0` |
+| `vpp_interop_end_m_gtp6_d.sh` | `sr localsid address 2001:db8:e:0:0:14:0:123 behavior end.dt6 0` (full SID = locator+function /88 + Args.Mob.Session for TEID=0x123, QFI=5) |
 | `vpp_interop_end_m_gtp6_e.sh` | `sr localsid prefix 2001:db8:6::/64 behavior end.m.gtp6.d 2001:db8:f::/88 nh-type ipv6 fib-table 0 drop-in` |
 | `vpp_interop_end_m_gtp6_d_di.sh` | `sr localsid address 2001:db8:e::1 behavior end` (RFC 8986 plain End) |
 

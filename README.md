@@ -42,7 +42,7 @@ srv6-mup-tests/
 │   │                              SR-domain-side encap/decap reading.
 │   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
 │   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
-│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6) -> VPP end.m.gtp6.e (SRv6 -> GTP-U)
+│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6, RFC 9433 Section 6.3) -> VPP End.DT6 (SRv6 -> IPv6, RFC 8986 Section 4.8)
 │   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (GTP-U -> SRv6) -> Linux End.M.GTP6.E (SRv6 -> GTP-U)
 │   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (GTP-U -> SRv6 inline) -> VPP End (RFC 8986 transit)
 ├── tests/
@@ -172,7 +172,7 @@ RFC 9433 action-name mnemonic: **D** = GTP-U **D**ecap (output is SRv6), **E** =
 |---|---|---|
 | `vpp_interop_h_m_gtp4_d.sh` | H.M.GTP4.D §6.7 (GTP-U → SRv6) | end.m.gtp4.e §6.6 (SRv6 → GTP-U) |
 | `vpp_interop_end_m_gtp4_e.sh` | End.M.GTP4.E §6.6 (SRv6 → GTP-U) | sr policy + plain encap (IPv4 → SRv6) |
-| `vpp_interop_end_m_gtp6_d.sh` | End.M.GTP6.D §6.3 + §6.5 Note (GTP-U → SRv6) | end.m.gtp6.e §6.5 (SRv6 → GTP-U) |
+| `vpp_interop_end_m_gtp6_d.sh` | End.M.GTP6.D Section 6.3 (GTP-U → SRv6) | End.DT6 RFC 8986 Section 4.8 (SRv6 → IPv6) |
 | `vpp_interop_end_m_gtp6_e.sh` | End.M.GTP6.E §6.5 (SRv6 → GTP-U) | end.m.gtp6.d drop-in §6.3 (GTP-U → SRv6 inline) |
 | `vpp_interop_end_m_gtp6_d_di.sh` | End.M.GTP6.D.Di §6.4 (GTP-U → SRv6 inline) | End (RFC 8986 transit) |
 
