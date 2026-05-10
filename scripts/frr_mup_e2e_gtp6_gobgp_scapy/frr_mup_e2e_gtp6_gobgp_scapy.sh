@@ -557,35 +557,34 @@ chmod +x /tmp/dn/dl_probe.py
 # GTP-U(v6) at gw1.
 cat > /tmp/gnb/dl_sniff.py <<'PYEOF'
 #!/usr/bin/env python3
-"""Wait for a GTP-U(v6) packet whose TEID matches.  On hit, print
-DL-PROBE-RX and exit 0.  Used after triggering a DL probe from dn."""
-import sys, time
-from scapy.all import sniff, AsyncSniffer
+"""Verify a GTP-U(v6) packet with matching TEID arrived in the
+harness-managed tcpdump pcap.  The harness starts `tcpdump -i veth-gnb
+-w /tmp/pcap/gnb.pcap` before the probe is sent, so by the time we
+read the pcap the kernel-emitted GTP-U is already on disk.  Reading
+the existing pcap with scapy avoids the AsyncSniffer BPF-setup race
+(scapy's sniffer thread starts after the GTP-U has already crossed
+the wire) while still decoding the GTP-U layer for TEID verification."""
+import sys
+from scapy.all import rdpcap
 from scapy.contrib.gtp import GTP_U_Header
 
-TEID    = int(sys.argv[1])
-IFACE   = sys.argv[2]
-TIMEOUT = float(sys.argv[3])
+TEID  = int(sys.argv[1])
+PCAP  = sys.argv[2]
 
-def is_match(pkt):
+pkts = rdpcap(PCAP)
+for pkt in pkts:
     if not pkt.haslayer(GTP_U_Header):
-        return False
-    return int(pkt[GTP_U_Header].teid) == TEID
-
-sniffer = AsyncSniffer(iface=IFACE, filter="udp port 2152",
-                       store=True, stop_filter=is_match)
-sniffer.start()
-deadline = time.time() + TIMEOUT
-while time.time() < deadline:
-    if any(is_match(p) for p in (sniffer.results or [])):
-        sniffer.stop()
-        print("DL-PROBE-RX teid={}".format(TEID))
+        continue
+    teid = int(pkt[GTP_U_Header].teid)
+    if teid == TEID:
+        print("DL-PROBE-RX teid={} (from {})".format(TEID, PCAP))
         sys.exit(0)
-    time.sleep(0.1)
-sniffer.stop()
-print("DL-PROBE-MISS no matching GTP-U(v6) within {}s".format(TIMEOUT))
-for pkt in (sniffer.results or []):
-    print(pkt.summary())
+print("DL-PROBE-MISS no matching GTP-U(v6) with TEID={} in {} ({} pkts)".format(
+    TEID, PCAP, len(pkts)))
+for pkt in pkts:
+    print("  ", pkt.summary())
+    if pkt.haslayer(GTP_U_Header):
+        print("       teid={}".format(int(pkt[GTP_U_Header].teid)))
 sys.exit(1)
 PYEOF
 chmod +x /tmp/gnb/dl_sniff.py
@@ -595,13 +594,20 @@ echo "===DL-PROBE==="
 if [ "$SKIP_DL" = "1" ]; then
 	echo "DL: SKIP (FOLLOWUP-MUP-V6-E2E, srv6-mup-issues 20260510-042434)"
 else
-	ip netns exec gnb python3 /tmp/gnb/dl_sniff.py $TEID veth-gnb 5 \
-		> /tmp/gnb/dl_sniff.log 2>&1 &
-	DL_SNIFF=$!
-	sleep 0.3
+	# Send the probe and verify against the harness-managed tcpdump
+	# pcap (tcpdump was started earlier in the script).  We use scapy's
+	# rdpcap() to decode the GTP-U layer and confirm TEID; the previous
+	# AsyncSniffer-based verifier raced against scapy's BPF socket
+	# setup and the GTP-U arrival landed before the filter was
+	# attached, leaving `sniffer.results` empty.  Reading the already-
+	# captured pcap avoids that race entirely.
 	ip netns exec dn python3 /tmp/dn/dl_probe.py $UE_PFX $DN_IP 2>&1 \
 		| tee /tmp/dn/dl_probe.log
-	wait $DL_SNIFF
+	# tcpdump -U writes per-packet, but FS / 9p sync still benefits
+	# from a small grace before scapy reads the file.
+	sleep 1
+	ip netns exec gnb python3 /tmp/gnb/dl_sniff.py $TEID /tmp/pcap/gnb.pcap \
+		> /tmp/gnb/dl_sniff.log 2>&1
 	DL_RC=$?
 	cat /tmp/gnb/dl_sniff.log
 	if [ "$DL_RC" -eq 0 ]; then
