@@ -45,13 +45,17 @@ TRIGGER_LAG_S=${TRIGGER_LAG_S:-1}  # seconds between trigger and first probe
 POST_S=${POST_S:-15}          # seconds of stream after the trigger
 LOSS_BOUND_C=${LOSS_BOUND_C:-9999}  # subtest C interruption upper bound (pkts);
                                     # 9999 = "record only, do not gate"
-# FOLLOWUP-MUP-GR-A: sub-test A (GR + clear bgp *) currently loses
-# packets at ~the no-GR rate even with the SAFI_MUP GR-helper fixup
-# (frr 23d54c02b617) folded into source.  preserve-fw-state is not
-# preserving the seg6local kernel install across the session bounce.
-# Default LOSS_BOUND_A to record-only (9999) until the gap is fixed;
-# tracked in srv6-mup-issues 20260510-041620.  Set LOSS_BOUND_A=0 in
-# env to re-gate strictly.
+# FOLLOWUP-MUP-GR-A: sub-test A (GR + clear bgp *) still loses packets
+# at ~the no-GR rate even with `no bgp hard-administrative-reset` set
+# on both pe1 and gw1.  The FRR-side fixup
+# (FOREACH_AFI_SAFI_NSF / bgp_gr_supported_for_afi_safi covering
+# SAFI_MUP, folded into seg6-mobile) is necessary but not sufficient —
+# the receive-side T2ST install is still torn down during the bounce
+# window.  Reproduced under tests/topotests/bgp_mup as
+# test_gr_helper_preserves_mup_install (currently xfail).  Tracked in
+# srv6-mup-issues 20260510-041620; default LOSS_BOUND_A to record-only
+# (9999) until the missing path is identified.  Set LOSS_BOUND_A=0 in
+# env to re-gate.
 LOSS_BOUND_A=${LOSS_BOUND_A:-9999}
 
 export PATH="$ROOT/iproute2/ip:$BIN:$PATH"
