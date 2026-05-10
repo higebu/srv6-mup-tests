@@ -169,7 +169,11 @@ ip -n gw1 link set veth-gw-gnb master vrf-red
 # Now assign addresses (after vrf bind so inet6 addrs aren't flushed).
 ip -n gnb  addr add 2001:db8:a::5/64    dev veth-gnb     nodad
 ip -n gw1  addr add 2001:db8:a::1/64    dev veth-gw-gnb  nodad
-ip -n gw1  addr add 2001:db8:a::100/128 dev veth-gw-gnb  nodad
+# T2ST endpoint 2001:db8:a::100 is NOT a local address on gw1 — the
+# End.M.GTP6.D seg6local install (FRR T2ST receive path) is what
+# delivers GTP-U(v6) destined to it.  Adding it locally would let the
+# kernel-managed local table short-circuit before the seg6local route
+# in vrf-red.
 ip -n gw1  addr add 2001:db8:1::1/64      dev veth-gw-sr   nodad
 ip -n pe1  addr add 2001:db8:1::2/64      dev veth-pe-sr   nodad
 ip -n pe1  addr add 2001:db8:b::1/64     dev veth-pe-dn   nodad
@@ -204,6 +208,10 @@ ip netns exec gw1 ping -c 1 -W 1 2001:db8:1::2 >/dev/null 2>&1 || true
 
 # Default routes for the leaf hosts so reply packets can return.
 ip -n gnb route add default via 2001:db8:a::1 dev veth-gnb
+# Force gNB-side packets destined to T2ST EP via gw1's link-local
+# address rather than on-link ND for the /128 (which gw1 will not
+# answer since the address is not local — see addr setup above).
+ip -n gnb route add $T2ST_EP/128 via 2001:db8:a::1 dev veth-gnb
 ip -n dn  route add default via 2001:db8:b::1  dev veth-dn
 
 # -------------------------------------------------------------------------
@@ -356,13 +364,18 @@ ip -n gw1 -d -6 route show table 100 2>&1 | head -20
 # -------------------------------------------------------------------------
 # FOLLOWUP-MUP-V6-E2E: gw1 End.M.GTP6.E install fires SR-decap but no
 # outgoing GTP-U(v6) is observed at gnb (`src ::` placeholder may be
-# the cause).  UL is also blocked because T2ST(v6) install is
-# intentionally skipped (closed/20260509-150607) and there is no
-# matching End.M.GTP6.D install on gw1 yet.  Both probes default to
-# record-only (skipper) until srv6-mup-issues 20260510-042434 lands
-# the fix.  Set SKIP_DL=0 / SKIP_UL=0 in env to re-gate strictly.
+# the cause).  Kept as a record-only skip until DL probe is
+# stabilised.
+#
+# UL: the End.M.GTP6.D install on gw1 from T2ST receive is verified
+# strictly — the seg6local route + SRH SR Policy + DSD-SID match are
+# all asserted.  End-to-end UL: gnb -> gw1 (End.M.GTP6.D) -> pe1
+# (End.DT6 decap) -> dn.  Per RFC 9433 Section 6.3 End.M.GTP6.D
+# pushes SRH = B (no D prepend; that's End.M.GTP6.D.Di Section 6.4),
+# Args.Mob.Session into SRH[0], so a 1-segment policy lands at
+# pe1 with segments_left == 0 — End.DT6 decaps cleanly.
 SKIP_DL=${SKIP_DL:-1}
-SKIP_UL=${SKIP_UL:-1}
+SKIP_UL=${SKIP_UL:-0}
 
 PASS=1
 FAIL_REASONS=()
@@ -378,17 +391,21 @@ PE1_T1ST_MAIN=$(ip -n pe1 -6 route show table main $UE_PFX 2>&1 | head -1)
 [ -z "$PE1_T1ST_MAIN" ] || \
 	fail "pe1: T1ST leaked into main FIB (slice isolation broken): $PE1_T1ST_MAIN"
 
-# (2) gw1's T2ST install — intentionally skipped for v6 endpoints
-# (closed/20260509-150607: bgp_mup_st_announce skips FIB install for
-# T2ST(v6) and instead expects End.M.GTP6.D to dispatch on the MUP-GW
-# side).  Kept as record-only output until the End.M.GTP6.D origination
-# story lands; tracked by srv6-mup-issues 20260510-042434
-# (FOLLOWUP-MUP-V6-E2E).  Skip both the encap-seg6local presence and
-# the DSD-SID match assertions.
+# (2) gw1's T2ST install: encap seg6local action End.M.GTP6.D, SR
+# Policy SRH segs = [pe1's DSD SID].  Same vrf-red expectation as (1).
 GW1_T2ST=$(ip -n gw1 -d -6 route show table 100 $T2ST_EP 2>&1 | head -1)
-echo "  gw1 T2ST(v6) install (record-only): $GW1_T2ST"
+case "$GW1_T2ST" in
+	*"encap seg6local"*"End.M.GTP6.D"*) ;;
+	*) fail "gw1: T2ST install missing 'End.M.GTP6.D' action in vrf-red (got: $GW1_T2ST)" ;;
+esac
+if [ -n "$PE_DSD_SID" ]; then
+	if ! echo "$GW1_T2ST" | grep -qF "$PE_DSD_SID"; then
+		fail "gw1: T2ST SRH segs != pe1's DSD SID $PE_DSD_SID (got: $GW1_T2ST)"
+	fi
+fi
 GW1_T2ST_MAIN=$(ip -n gw1 -6 route show table main $T2ST_EP 2>&1 | head -1)
-echo "  gw1 T2ST(v6) main-FIB (record-only): $GW1_T2ST_MAIN"
+[ -z "$GW1_T2ST_MAIN" ] || \
+	fail "gw1: T2ST leaked into main FIB (slice isolation broken): $GW1_T2ST_MAIN"
 
 # (3) pe1's End.DT6 seg6local install at the DSD SID locator.
 PE1_DT6=$(ip -n pe1 -d -6 route show 2>&1 | grep -E 'End\.DT6' | head -1)
@@ -470,11 +487,13 @@ sleep 1
 echo "===SCAPY-GTPU-PING==="
 cat > /tmp/gnb/gtpu_ping.py <<'PYEOF'
 #!/usr/bin/env python3
-"""Send one GTP-U(TEID) over IPv6 wrapping an ICMPv6 echo from
-UE -> DN, then sniff for a GTP-U(v6) reply carrying the ICMPv6
-echo-reply on the same TEID."""
+"""Send one GTP-U(TEID) over IPv6 wrapping an ICMPv6 echo from UE -> DN,
+then read the harness-managed gnb tcpdump pcap to confirm a GTP-U(v6)
+reply carrying the ICMPv6 echo-reply on the same TEID arrived back.
+Mirrors the DL probe's pattern (rdpcap-based) — AsyncSniffer races
+against scapy's BPF socket setup when the round-trip is sub-100us."""
 import sys, time
-from scapy.all import IPv6, UDP, ICMPv6EchoRequest, ICMPv6EchoReply, conf, send, AsyncSniffer
+from scapy.all import IPv6, UDP, ICMPv6EchoRequest, ICMPv6EchoReply, conf, send, rdpcap
 from scapy.contrib.gtp import GTP_U_Header
 
 GW       = sys.argv[1]
@@ -482,46 +501,38 @@ UE       = sys.argv[2]
 DN       = sys.argv[3]
 TEID     = int(sys.argv[4])
 TIMEOUT  = float(sys.argv[5])
+PCAP     = sys.argv[6] if len(sys.argv) > 6 else "/tmp/pcap/gnb.pcap"
 
 conf.verb = 0
-
-def is_reply(pkt):
-    if not pkt.haslayer(GTP_U_Header):
-        return False
-    teid = pkt[GTP_U_Header].teid
-    has_icmp = pkt.haslayer(ICMPv6EchoReply)
-    print("is_reply: teid={}({}) want={} has_icmpv6_reply={}".format(
-        teid, type(teid).__name__, TEID, has_icmp))
-    if int(teid) != TEID:
-        return False
-    return has_icmp
-
-sniffer = AsyncSniffer(filter="udp port 2152", store=True, stop_filter=is_reply)
-sniffer.start()
-time.sleep(0.2)
 
 inner = IPv6(src=UE, dst=DN) / ICMPv6EchoRequest(id=0xbeef, seq=1, data=b"srv6mup")
 outer = IPv6(src="2001:db8:a::5", dst=GW) / UDP(sport=2152, dport=2152) \
         / GTP_U_Header(teid=TEID) / inner
 send(outer)
 
-deadline = time.time() + TIMEOUT
-seen = 0
-while time.time() < deadline:
-    for pkt in (sniffer.results or [])[seen:]:
-        seen += 1
-        if is_reply(pkt):
-            print("GTPU-PING-OK teid={}".format(TEID))
-            sniffer.stop()
-            sys.exit(0)
-    time.sleep(0.1)
+# tcpdump -U writes per-packet, but FS / 9p sync still benefits from a
+# small grace before scapy reads the file.
+time.sleep(min(TIMEOUT, 1.5))
 
-sniffer.stop()
-print("GTPU-PING-FAIL no matching GTP-U(ICMPv6 echo-reply) within {}s".format(TIMEOUT))
-print("--- captured ({} pkts) ---".format(len(sniffer.results or [])))
-for pkt in (sniffer.results or []):
+try:
+    pkts = rdpcap(PCAP)
+except Exception as exc:
+    print("GTPU-PING-FAIL pcap read failed: {}".format(exc))
+    sys.exit(1)
+
+for pkt in pkts:
+    if not pkt.haslayer(GTP_U_Header):
+        continue
+    if int(pkt[GTP_U_Header].teid) != TEID:
+        continue
+    if pkt.haslayer(ICMPv6EchoReply):
+        print("GTPU-PING-OK teid={}".format(TEID))
+        sys.exit(0)
+
+print("GTPU-PING-FAIL no matching GTP-U(ICMPv6 echo-reply) in {}".format(PCAP))
+print("--- pcap pkts ({} total) ---".format(len(pkts)))
+for pkt in pkts[:20]:
     print(pkt.summary())
-    print("    layers:", [layer.name for layer in pkt.layers()])
 sys.exit(1)
 PYEOF
 chmod +x /tmp/gnb/gtpu_ping.py
