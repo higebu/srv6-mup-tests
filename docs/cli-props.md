@@ -1,7 +1,7 @@
 # BGP-MUP CLI property tests
 
 Single-PE pytest suite driving FRR's BGP-MUP vtysh surface with
-`hypothesis`-generated input.  Lives in `tests/cli/`.
+`hypothesis`-generated input.  Lives in `tests/properties/bgp_mup_cli/`.
 
 The MUP CLI surface is reachable only under
 `address-family ipv[46] mup` of a non-default-vrf bgp instance, since
@@ -100,8 +100,9 @@ The fixture expects the standard sibling layout:
 
 ## Conf layout
 
-`tests/cli/pe1/frr.conf` is a single-file config in the same shape
-the rest of `scripts/frr_*` uses: daemons (mgmtd / zebra / bgpd) come
+`tests/properties/bgp_mup_cli/pe1/frr.conf` is a single-file config in
+the same shape the rest of `tests/scenarios/frr_*/` uses: daemons
+(mgmtd / zebra / bgpd) come
 up empty, and the conf is rendered via `vtysh -f /tmp/pe1/frr.conf`
 once the vty socket is ready.  The conf opens the MUP AF in three
 bgp instances (default, slice1, slice2) so the property suite has

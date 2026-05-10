@@ -63,8 +63,8 @@ PYTEST_ARGS="$*"
 # Sync the .venv on the host (vng shares the host fs read/write via
 # 9p, so the same .venv resolves inside the VM — but uv-side cache
 # writes are cleaner outside the VM).
-echo "==> uv sync (prepare .venv at tests/cli/.venv)" >&2
-( cd "$ROOT/tests/cli" && "$UV" sync ) || {
+echo "==> uv sync (prepare .venv at tests/properties/bgp_mup_cli/.venv)" >&2
+( cd "$ROOT/tests/properties/bgp_mup_cli" && "$UV" sync ) || {
     echo "ERROR: uv sync failed; cannot prepare the test venv" >&2
     exit 2
 }
@@ -75,7 +75,7 @@ echo "==> uv sync (prepare .venv at tests/cli/.venv)" >&2
 sudo mkdir -p /usr/local/var/run/frr /usr/local/var/lib/frr || true
 
 # vng glue:
-#   --rwdir mounts $ROOT/tests/cli read-write so the .venv, the
+#   --rwdir mounts $ROOT/tests/properties/bgp_mup_cli read-write so the .venv, the
 #     hypothesis example DB (.hypothesis/examples/), and the pytest
 #     cache survive across runs.  bgpd / zebra / mgmtd write logs to
 #     /tmp/pe1/, which is also rw inside the VM.
@@ -85,7 +85,7 @@ sudo mkdir -p /usr/local/var/run/frr /usr/local/var/lib/frr || true
 # `script -q -c` wrapper preserves vng's terminal handling and gives
 # us a transcript at $VNG_LOG.
 exec script -q -c "vng -m 4G \
-  --rwdir=$ROOT/tests/cli \
+  --rwdir=$ROOT/tests/properties/bgp_mup_cli \
   --run $LINUX_PATH --user root \
   -- env \
     FRR_PATH=$FRR_PATH \
@@ -98,6 +98,6 @@ exec script -q -c "vng -m 4G \
              mount -t tmpfs tmpfs /usr/local/var/run 2>/dev/null; \
              mount -t tmpfs tmpfs /usr/local/var/lib 2>/dev/null; \
              mkdir -p /usr/local/var/run/frr /usr/local/var/lib/frr; \
-             cd $ROOT/tests/cli && \
+             cd $ROOT/tests/properties/bgp_mup_cli && \
              .venv/bin/pytest $PYTEST_ARGS'" \
   "$VNG_LOG"

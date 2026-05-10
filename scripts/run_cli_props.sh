@@ -50,8 +50,8 @@ fi
 PYTEST_ARGS="$*"
 [ -z "$PYTEST_ARGS" ] && PYTEST_ARGS="-v"
 
-echo "==> uv sync (prepare .venv at tests/cli/.venv)" >&2
-( cd "$ROOT/tests/cli" && "$UV" sync ) || {
+echo "==> uv sync (prepare .venv at tests/properties/bgp_mup_cli/.venv)" >&2
+( cd "$ROOT/tests/properties/bgp_mup_cli" && "$UV" sync ) || {
     echo "ERROR: uv sync failed; cannot prepare the test venv" >&2
     exit 2
 }
@@ -60,7 +60,7 @@ echo "==> uv sync (prepare .venv at tests/cli/.venv)" >&2
 # write to /usr/local/var/run/frr and /usr/local/var/lib/frr.
 sudo mkdir -p /usr/local/var/run/frr /usr/local/var/lib/frr || true
 
-cd "$ROOT/tests/cli"
+cd "$ROOT/tests/properties/bgp_mup_cli"
 
 # Run pytest as root: the conftest creates a netns, vrf netdevs, and
 # dummy interfaces, all of which need NET_ADMIN.  Forward the same env

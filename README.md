@@ -1,6 +1,6 @@
 # srv6-mup-tests
 
-Test harness for the Linux SRv6 Mobile User Plane (RFC 9433) implementation:
+Test scripts and documentation for the Linux SRv6 Mobile User Plane (RFC 9433) implementation:
 
 - Linux kernel patch series: <https://github.com/higebu/linux/tree/srv6-mup>
 - iproute2 patch series:     <https://github.com/higebu/iproute2/tree/srv6-mup>
@@ -15,8 +15,11 @@ This repo holds:
    (test ingress, SR-domain wire, test egress).  The role each end
    plays in 3GPP terms (gNB / MUP-PE upstream peer) depends on the
    scenario direction (UL D-family vs. DL E-family); see
-   [`docs/topology.md`](docs/topology.md) for the per-scenario role
-   mapping.
+   [`docs/vpp-interop.md`](docs/vpp-interop.md) for the per-scenario
+   topology and role mapping.
+3. Per-test READMEs under each `tests/scenarios/*/` directory (FRR
+   control-plane / data-plane tests + VPP interop scenarios) and
+   `tests/properties/bgp_mup_cli/` (BGP-MUP CLI property tests).
 
 ## Layout
 
@@ -25,35 +28,37 @@ srv6-mup-tests/
 ├── README.md                  -- this file
 ├── docs/
 │   ├── selftests.md           -- how to run the kernel selftests under vng
-│   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios
-│   ├── topology.md            -- per-scenario netns + veth topology
+│   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios + per-scenario topology
+│   ├── cli-props.md           -- BGP-MUP CLI property test catalogue + evidence
 │   └── build-tarball.md       -- how to rebuild the SRv6 MUP .deb bundle tarball
-├── scripts/                   -- VPP interop scripts, named after the
-│   │                              Linux behavior under test (1:1 with
-│   │                              the in-tree kernel selftests).  The
-│   │                              "(GTP-U -> SRv6)" / "(SRv6 -> GTP-U)"
-│   │                              annotations show the protocol
-│   │                              transformation each end performs;
-│   │                              note the RFC 9433 mnemonic — the "D"
-│   │                              suffix means GTP-U-Decap (= produces
-│   │                              SRv6) and the "E" suffix means
-│   │                              GTP-U-Encap (= produces GTP-U from
-│   │                              SRv6), which is the *opposite* of the
-│   │                              SR-domain-side encap/decap reading.
-│   ├── vpp_interop_h_m_gtp4_d.sh        -- Linux H.M.GTP4.D (GTP-U -> SRv6) -> VPP end.m.gtp4.e (SRv6 -> GTP-U)
-│   ├── vpp_interop_end_m_gtp4_e.sh      -- VPP `sr policy + plain encap` (IPv4 -> SRv6) -> Linux End.M.GTP4.E (SRv6 -> GTP-U)
-│   ├── vpp_interop_end_m_gtp6_d.sh      -- Linux End.M.GTP6.D (GTP-U -> SRv6, RFC 9433 Section 6.3) -> VPP End.DT6 (SRv6 -> IPv6, RFC 8986 Section 4.8)
-│   ├── vpp_interop_end_m_gtp6_e.sh      -- VPP end.m.gtp6.d drop-in (GTP-U -> SRv6) -> Linux End.M.GTP6.E (SRv6 -> GTP-U)
-│   └── vpp_interop_end_m_gtp6_d_di.sh   -- Linux End.M.GTP6.D.Di (GTP-U -> SRv6 inline) -> VPP End (RFC 8986 transit)
+├── scripts/                   -- build / release / runner utilities (no tests)
+│   ├── build_frr_deb.sh
+│   ├── build_tarball.sh
+│   ├── pack_release.sh
+│   ├── run_cli_props.sh       -- host-side runner for the CLI property tests
+│   └── run_cli_props_vng.sh   -- vng-side runner for the same suite
 ├── tests/
-│   └── cli/                   -- single-PE pytest+hypothesis property tests
-│                                 for BGP-MUP CLI (see docs/cli-props.md)
+│   ├── properties/
+│   │   └── bgp_mup_cli/       -- single-PE pytest+hypothesis property tests
+│   │                             for BGP-MUP CLI (see docs/cli-props.md)
+│   └── scenarios/             -- one directory per end-to-end scenario;
+│                                 RFC 9433 mnemonic — the "D" suffix means
+│                                 GTP-U-Decap (= produces SRv6) and the "E"
+│                                 suffix means GTP-U-Encap (= produces
+│                                 GTP-U from SRv6).
+│       ├── frr_*/                          -- FRR-driven scenarios
+│       └── vpp_interop_*/                  -- VPP interop scenarios:
+│           ├── vpp_interop_h_m_gtp4_d/        -- Linux H.M.GTP4.D    -> VPP end.m.gtp4.e
+│           ├── vpp_interop_end_m_gtp4_e/      -- VPP sr policy+encap -> Linux End.M.GTP4.E
+│           ├── vpp_interop_end_m_gtp6_d/      -- Linux End.M.GTP6.D  -> VPP End.DT6
+│           ├── vpp_interop_end_m_gtp6_e/      -- VPP end.m.gtp6.d (drop-in) -> Linux End.M.GTP6.E
+│           └── vpp_interop_end_m_gtp6_d_di/   -- Linux End.M.GTP6.D.Di -> VPP End
 ├── pcaps/                     -- merged pcaps from a recent run
 │                                 (test ingress + SR-domain wire + test egress)
 └── logs/                      -- runtime logs (.gitignore'd)
 ```
 
-## BGP-MUP CLI property tests (`tests/cli/`)
+## BGP-MUP CLI property tests (`tests/properties/bgp_mup_cli/`)
 
 A single-PE pytest + `hypothesis` test suite exercises FRR's BGP-MUP
 vtysh surface for round-trip preservation, context guards, and
@@ -125,15 +130,15 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)   # parent of linux/ iproute2/ srv6-mup-t
 PCAP_DIR=$ROOT/srv6-mup-tests/pcaps
 rm -f $PCAP_DIR/*.pcap
 
-for s in vpp_interop_h_m_gtp4_d.sh \
-         vpp_interop_end_m_gtp4_e.sh \
-         vpp_interop_end_m_gtp6_d.sh \
-         vpp_interop_end_m_gtp6_e.sh \
-         vpp_interop_end_m_gtp6_d_di.sh; do
+for s in vpp_interop_h_m_gtp4_d \
+         vpp_interop_end_m_gtp4_e \
+         vpp_interop_end_m_gtp6_d \
+         vpp_interop_end_m_gtp6_e \
+         vpp_interop_end_m_gtp6_d_di; do
   script -q -c "vng -m 4G --rwdir=$PCAP_DIR \
     --run $ROOT/linux --user root \
     -- env PCAP_OUT=$PCAP_DIR \
-    $ROOT/srv6-mup-tests/scripts/$s" \
+    $ROOT/srv6-mup-tests/tests/scenarios/$s/$s.sh" \
     /tmp/run-$s.log >/dev/null 2>&1
   grep -E 'VPP-INTEROP' /tmp/run-$s.log | tail -1
 done
@@ -170,11 +175,11 @@ RFC 9433 action-name mnemonic: **D** = GTP-U **D**ecap (output is SRv6), **E** =
 
 | Script | Linux side | VPP side |
 |---|---|---|
-| `vpp_interop_h_m_gtp4_d.sh` | H.M.GTP4.D §6.7 (GTP-U → SRv6) | end.m.gtp4.e §6.6 (SRv6 → GTP-U) |
-| `vpp_interop_end_m_gtp4_e.sh` | End.M.GTP4.E §6.6 (SRv6 → GTP-U) | sr policy + plain encap (IPv4 → SRv6) |
-| `vpp_interop_end_m_gtp6_d.sh` | End.M.GTP6.D Section 6.3 (GTP-U → SRv6) | End.DT6 RFC 8986 Section 4.8 (SRv6 → IPv6) |
-| `vpp_interop_end_m_gtp6_e.sh` | End.M.GTP6.E §6.5 (SRv6 → GTP-U) | end.m.gtp6.d drop-in §6.3 (GTP-U → SRv6 inline) |
-| `vpp_interop_end_m_gtp6_d_di.sh` | End.M.GTP6.D.Di §6.4 (GTP-U → SRv6 inline) | End (RFC 8986 transit) |
+| `tests/scenarios/vpp_interop_h_m_gtp4_d/` | H.M.GTP4.D §6.7 (GTP-U → SRv6) | end.m.gtp4.e §6.6 (SRv6 → GTP-U) |
+| `tests/scenarios/vpp_interop_end_m_gtp4_e/` | End.M.GTP4.E §6.6 (SRv6 → GTP-U) | sr policy + plain encap (IPv4 → SRv6) |
+| `tests/scenarios/vpp_interop_end_m_gtp6_d/` | End.M.GTP6.D Section 6.3 (GTP-U → SRv6) | End.DT6 RFC 8986 Section 4.8 (SRv6 → IPv6) |
+| `tests/scenarios/vpp_interop_end_m_gtp6_e/` | End.M.GTP6.E §6.5 (SRv6 → GTP-U) | end.m.gtp6.d drop-in §6.3 (GTP-U → SRv6 inline) |
+| `tests/scenarios/vpp_interop_end_m_gtp6_d_di/` | End.M.GTP6.D.Di §6.4 (GTP-U → SRv6 inline) | End (RFC 8986 transit) |
 
 End.MAP (§6.2) and End.Limit (§6.8) cannot be exercised against VPP
 because the VPP `srv6-mobile` plugin (Arrcus contribution) does not
