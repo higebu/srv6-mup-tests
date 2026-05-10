@@ -1,34 +1,13 @@
 #!/bin/bash
-# Intra-node N3+N6 co-location — verifies FRR's BGP-MUP loop guard
-# correctly suppresses T1ST install when the endpoint is covered by a
-# self-originated ISD on a sibling VRF.
-#
-# Background (Matsushima feedback, 2026-05, concern #2):
-#
-#   "gw1 自体も、N6 VRF に T1ST route を import することがあるので、
-#    vrf-red が export する ISD route で T1ST route を resolve できるか"
-#
-# Translated to wire-level semantics: if a single FRR node hosts both
-# the N3 VRF (vrf-red, originating the ISD) and the N6 VRF (vrf-blue,
-# importing T1ST whose endpoint falls inside the local ISD), what
-# does FRR's BGP-MUP do?
-#
-# Answer (this test asserts): FRR's loop guard
-# `bgp_mup_isd_is_self` correctly recognizes the situation and
-# skips the T1ST install in any local per-vrf table.  H.Encaps'ing
-# at vrf-blue toward the local ISD's SID would land on vrf-red's
-# own End.M.GTP4.E SID install (same node), which is a physical
-# encap-then-immediate-decap self-loop.  The data plane still works
-# because vrf-red's seg6local action is installed in the default-vrf
-# IPv6 FIB and any locally-emitted SRv6 packet whose outer dst hits
-# the locator gets transformed there; the install in vrf-blue is
-# unnecessary and would loop, so it is correctly omitted.
-#
-# Inter-node cross-VRF resolve (gw1 originates ISD, a different PE
-# imports T1ST and resolves against the received ISD) is a separate
-# scenario and is covered by:
-#   - tests/scenarios/frr_mup_e2e_gobgp_scapy           (single PE-GW pair)
-#   - tests/scenarios/frr_mup_multi_vrf_gobgp_scapy     (RT-split per-vrf import)
+# Self-origin T1ST resolve — a single FRR node hosts both the N3 VRF
+# (vrf-red, originating the ISD) and the N6 VRF (vrf-blue, importing
+# the T1ST received from a MUP-Controller).  draft-ietf-bess-mup-safi
+# Section 3.3.9 has no carve-out for ISDs originated by another VRF
+# on the same speaker; the synthesized End.M.GTP4.E SID is a kernel
+# seg6_local local action (consumes the SRH, emits GTP-U toward the
+# gNB) rather than an L3VPN-style loopback label, so the cross-vrf
+# install on the originating speaker is an SR hairpin and must
+# proceed.
 #
 # Topology:
 #
@@ -60,10 +39,9 @@
 #      received T1ST (BGP session functioning).
 #   2. vrf-red's ISD installs the End.M.GTP4.E SID into the default-vrf
 #      IPv6 FIB (locator 2001:db8:f:100::/56 with `oif vrf-red`).
-#   3. bgpd log records the loop guard firing for the T1ST:
-#      "BGP-MUP: T1ST endpoint matches self-originated ISD".
-#   4. No T1ST install lands in either vrf-red (table 100) or
-#      vrf-blue (table 200) IPv4 FIB — the loop guard prevented it.
+#   3. vrf-blue (table 200) IPv4 FIB carries 192.168.10.5/32 as a BGP
+#      route with an SRv6 H.Encaps nexthop pointing at the synthesized
+#      End.M.GTP4.E SID under gw1's locator (2001:db8:f::/48).
 
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -210,29 +188,29 @@ ISD_INSTALL=$(ip -n gw1 -d -6 route show 2>&1 | grep -E 'End\.M\.GTP4\.E.*oif vr
 [ -n "$ISD_INSTALL" ] \
 	|| fail "default-vrf IPv6 FIB missing End.M.GTP4.E install for vrf-red's ISD"
 
-# (3) Loop guard fired in bgpd log.
-LOOP_GUARD=$(grep -E "T1ST endpoint matches self-originated ISD" /tmp/gw1/bgpd.log 2>/dev/null | tail -1)
-[ -n "$LOOP_GUARD" ] \
-	|| fail "bgpd loop guard did NOT fire for T1ST 192.168.10.5 / ISD 10.99.0.0/24 (regression in bgp_mup_isd_is_self)"
-echo "===LOOP-GUARD==="
-echo "  ${LOOP_GUARD:-<no log line found>}"
+# (3) vrf-blue's IPv4 FIB carries the T1ST install with a seg6 H.Encaps
+# nexthop into gw1's locator.  vrf-blue imports the route's RT (10:10)
+# and resolves the T1ST endpoint against vrf-red's locally-originated
+# ISD; vrf-red itself does not import 10:10, so it never installs the
+# T1ST in its own table.
+VB_T1ST_FIB=$(ip -n gw1 -4 route show table 200 192.168.10.5 2>&1 | head -3)
+[ -n "$VB_T1ST_FIB" ] \
+	|| fail "vrf-blue FIB missing T1ST install for 192.168.10.5/32"
+echo "$VB_T1ST_FIB" | grep -qE "encap seg6 .* segs 1 \[ 2001:db8:f:" \
+	|| fail "vrf-blue T1ST install lacks seg6 nexthop under gw1's locator: $VB_T1ST_FIB"
 
-# (4) No T1ST install in either vrf-red or vrf-blue IPv4 FIB.
 VR_T1ST_FIB=$(ip -n gw1 -4 route show table 100 192.168.10.5 2>&1 | head -1)
-VB_T1ST_FIB=$(ip -n gw1 -4 route show table 200 192.168.10.5 2>&1 | head -1)
 [ -z "$VR_T1ST_FIB" ] \
-	|| fail "vrf-red FIB has T1ST install (loop guard failed to suppress it): $VR_T1ST_FIB"
-[ -z "$VB_T1ST_FIB" ] \
-	|| fail "vrf-blue FIB has T1ST install (loop guard failed to suppress it): $VB_T1ST_FIB"
+	|| fail "vrf-red FIB unexpectedly carries T1ST install (vrf-red exports rt 10:10 but does not import it): $VR_T1ST_FIB"
 
 # -------------------------------------------------------------------------
 # Verdict
 # -------------------------------------------------------------------------
 echo "===VERDICT==="
 if [ "$PASS" = "1" ]; then
-	echo "FRR-MUP-INTRA-NODE-XVRF: PASS"
+	echo "FRR-MUP-SELF-ORIGIN-RESOLVE: PASS"
 else
-	echo "FRR-MUP-INTRA-NODE-XVRF: FAIL"
+	echo "FRR-MUP-SELF-ORIGIN-RESOLVE: FAIL"
 	for r in "${FAIL_REASONS[@]}"; do echo "  - $r"; done
 fi
 
