@@ -46,9 +46,10 @@ canonical role table.
 
 | Label | Setup                                  | Trigger                          | Expected outcome                                                                 |
 |-------|----------------------------------------|----------------------------------|----------------------------------------------------------------------------------|
-| A     | GR enabled (boot config)               | `clear bgp *` on pe1             | `lost == 0`. GR / `preserve-fw-state` keeps the kernel seg6local install in place across the session bounce, so GTP-U continues uninterrupted. |
+| A     | GR enabled (boot config)               | `clear bgp 2001:db8:1::1` on pe1 (single peer) | `lost == 0`. GR / `preserve-fw-state` keeps gw1's kernel seg6local install in place across the bounce of the pe1 -> gw1 session. pe1 still holds the gobgp-sourced T1ST/T2ST in its RIB (that session was not bounced), so it re-advertises the full MUP RIB on the new session and gw1's post-EOR cleanup leaves the install untouched. |
 | B     | GR enabled (boot config)               | `clear bgp * soft in` on pe1     | `lost == 0`. Route refresh re-sends MUP NLRI; the install must never bounce (no withdraw / re-add gap). |
 | C     | GR disabled at runtime (`no bgp graceful-restart`) | `clear bgp *` on pe1     | Interruption recorded. With GR off, zebra withdraws the install on session-down and re-installs after re-establish. The script reports `lost` and the implied interruption window (`lost / RATE_HZ`); upper bound is configurable via `LOSS_BOUND_C` (default `9999` = record only). |
+| D     | GR re-enabled after C                  | `clear bgp *` on pe1 (all peers) | Interruption recorded. `clear bgp *` also resets the pe1 -> gobgp session that supplies T1ST/T2ST to pe1; pe1 re-establishes with gw1 first and sends EOR before gobgp re-converges, so gw1's helper correctly prunes the un-refreshed stale T2ST per RFC 4724 and the install drops for the gobgp re-converge window. This is a multi-session ordering pitfall, not an FRR bug; recorded but not gated. |
 
 The traffic generator sends one GTP-U(ICMP echo) every `1/RATE_HZ`
 seconds with a unique inner ICMP `seq`, then diffs sent vs. seen seqs
@@ -72,6 +73,7 @@ Tunables (env):
 - `DEBUG=1` — extra diagnostic captures.
 - `RATE_HZ` — packets per second per sub-test (default `50`).
 - `PRE_S` / `POST_S` — pre-trigger and post-trigger stream window.
+- `LOSS_BOUND_A` — sub-test A upper bound; default `0` (gate strict).
 - `LOSS_BOUND_C` — sub-test C upper bound; `9999` = record-only.
 
 ## Pass criteria
@@ -82,10 +84,12 @@ FRR-MUP-GR-GOBGP-SCAPY: PASS
 
 is printed iff:
 
-- A: `lost == 0`.
+- A: `lost <= LOSS_BOUND_A` (default `0`).
 - B: `lost == 0`.
 - C: `lost <= LOSS_BOUND_C` (default `9999`, so always passes; set to a
   concrete bound once a baseline interruption window is established).
+- D: `lost <= 9999` (always passes; multi-session ordering case, recorded
+  for forensic comparison with C).
 
 The verdict block also emits the per-sub-test `sent / delivered / lost`
 line and the SR-domain pcap (`/tmp/pcap/<label>-gw-sr.pcap`) for

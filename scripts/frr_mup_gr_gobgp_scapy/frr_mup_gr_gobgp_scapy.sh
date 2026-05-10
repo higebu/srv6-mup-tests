@@ -1,24 +1,34 @@
 #!/bin/bash
 # BGP Graceful Restart / route refresh / clear-bgp e2e test for BGP-MUP.
 #
-# Three sub-tests share the same 5-netns topology as
+# Four sub-tests share the same 5-netns topology as
 # frr_mup_e2e_gobgp_scapy.sh; this script only differs in that:
 #
-#   - gw1 ↔ pe1 BGP session has `bgp graceful-restart` enabled
+#   - gw1 <-> pe1 BGP session has `bgp graceful-restart` enabled
 #     (RFC 4724) at boot.
-#   - the harness runs continuous GTP-U(ICMP echo) traffic from gnb
+#   - the test runs continuous GTP-U(ICMP echo) traffic from gnb
 #     while triggering control-plane events on pe1, and counts
 #     delivered/lost packets per sub-test.
 #
-#   A: GR on  + `clear bgp *`        — expect 0 GTP-U loss while the
-#                                       session re-establishes (kernel
-#                                       seg6local install is preserved
-#                                       by GR / preserve-fw-state).
+#   A: GR on  + `clear bgp <gw1>`     — single-peer bounce of the pe1
+#                                       to gw1 session.  Expect 0 GTP-U
+#                                       loss (gw1's helper preserves the
+#                                       kernel install across the bounce
+#                                       and the post-EOR cleanup is a
+#                                       no-op because pe1 re-advertises
+#                                       its full MUP RIB).
 #   B: GR on  + `clear bgp * soft in` — route refresh, expect 0 GTP-U
 #                                       loss (install must never bounce).
 #   C: GR off + `clear bgp *`         — measure interruption time as a
 #                                       baseline; loss > 0 is allowed
 #                                       and recorded.
+#   D: GR on  + `clear bgp *`         — multi-session bounce (also
+#                                       resets pe1 to gobgp).  pe1 sends
+#                                       EOR to gw1 before re-receiving
+#                                       T1ST/T2ST from gobgp, so gw1's
+#                                       helper correctly prunes the
+#                                       un-refreshed stale T2ST per
+#                                       RFC 4724.  Recorded only.
 #
 # Required co-built siblings:
 #   ../linux:b4/seg6-mobile (bzImage)
@@ -45,18 +55,13 @@ TRIGGER_LAG_S=${TRIGGER_LAG_S:-1}  # seconds between trigger and first probe
 POST_S=${POST_S:-15}          # seconds of stream after the trigger
 LOSS_BOUND_C=${LOSS_BOUND_C:-9999}  # subtest C interruption upper bound (pkts);
                                     # 9999 = "record only, do not gate"
-# FOLLOWUP-MUP-GR-A: sub-test A (GR + clear bgp *) still loses packets
-# at ~the no-GR rate even with `no bgp hard-administrative-reset` set
-# on both pe1 and gw1.  The FRR-side fixup
-# (FOREACH_AFI_SAFI_NSF / bgp_gr_supported_for_afi_safi covering
-# SAFI_MUP, folded into seg6-mobile) is necessary but not sufficient —
-# the receive-side T2ST install is still torn down during the bounce
-# window.  Reproduced under tests/topotests/bgp_mup as
-# test_gr_helper_preserves_mup_install (currently xfail).  Tracked in
-# srv6-mup-issues 20260510-041620; default LOSS_BOUND_A to record-only
-# (9999) until the missing path is identified.  Set LOSS_BOUND_A=0 in
-# env to re-gate.
-LOSS_BOUND_A=${LOSS_BOUND_A:-9999}
+# Sub-test A bounces only the pe1 -> gw1 BGP session (`clear bgp
+# 2001:db8:1::1`).  The receive-side T2ST install on gw1 must survive
+# the bounce window — that is the GR helper guarantee under test.  See
+# also sub-test D below for the multi-session `clear bgp *` variant
+# which intentionally exercises a known RFC 4724 limitation and runs
+# record-only.
+LOSS_BOUND_A=${LOSS_BOUND_A:-0}
 
 export PATH="$ROOT/iproute2/ip:$BIN:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
@@ -83,6 +88,9 @@ T1ST_EP=10.99.0.5
 T2ST_EP=10.99.0.100
 DSD_EP=10.0.0.250
 DN_IP=10.1.0.5
+PE1_GW1_NEIGHBOR=2001:db8:1::1   # gw1's address on the SR-domain veth, as
+                                 # seen from pe1 — the GR helper preservation
+                                 # asserts cover only this single session.
 
 # -------------------------------------------------------------------------
 # netns + veth wiring
@@ -317,10 +325,29 @@ run_subtest() {
 # Trigger functions
 # -------------------------------------------------------------------------
 trigger_clear_bgp() {
-	# Force a full session bounce on pe1.  With GR enabled, the kernel
-	# seg6local install must remain in place across the bounce; with GR
-	# disabled, zebra withdraws the install and re-creates it once the
-	# session re-establishes.
+	# Bounce ONLY the pe1 <-> gw1 session.  With GR enabled, gw1's stale
+	# T2ST/T1ST paths must stay STALE-but-installed across the bounce;
+	# pe1 re-advertises its full MUP RIB on the new session (DSD plus
+	# the gobgp-sourced T1ST/T2ST it still holds because that session
+	# was never bounced), so gw1's post-EOR cleanup keeps the install
+	# in place.  Single-peer clear is what the GR helper is designed to
+	# preserve through; see trigger_clear_bgp_all (sub-test D) for the
+	# multi-session variant that intentionally violates that guarantee.
+	echo "  pe1: clear bgp $PE1_GW1_NEIGHBOR"
+	$VTYSH_PE1 -c "clear bgp $PE1_GW1_NEIGHBOR" 2>&1
+	sleep $TRIGGER_LAG_S
+}
+
+trigger_clear_bgp_all() {
+	# Bounce all pe1 sessions at once (`clear bgp *`).  This also resets
+	# the pe1 <-> gobgp session that supplies T1ST/T2ST to pe1.  pe1
+	# re-establishes with gw1 first (~2s) and sends EOR before the
+	# gobgp session has re-converged (~4s extra), so gw1's helper
+	# correctly prunes the un-refreshed stale T2ST per RFC 4724 and the
+	# kernel install drops for the duration of the gobgp re-converge.
+	# This is a multi-session ordering pitfall, not an FRR bug — kept as
+	# a record-only sub-test so regressions in that *other* direction
+	# (e.g. install loss extending well beyond ~5s) would surface.
 	echo "  pe1: clear bgp *"
 	$VTYSH_PE1 -c "clear bgp *" 2>&1
 	sleep $TRIGGER_LAG_S
@@ -357,9 +384,10 @@ trigger_clear_bgp_no_gr() {
 }
 
 # -------------------------------------------------------------------------
-# Sub-test A: GR + clear bgp *  → expect 0 loss
+# Sub-test A: GR + clear bgp <gw1>  → expect 0 loss
 # -------------------------------------------------------------------------
-run_subtest A "GR enabled, full session bounce" trigger_clear_bgp "$LOSS_BOUND_A"
+run_subtest A "GR enabled, single-peer session bounce" \
+	trigger_clear_bgp "$LOSS_BOUND_A"
 
 # Wait for the session to re-establish and the per-vrf install to
 # settle before sub-test B runs on top of it.
@@ -394,13 +422,45 @@ sleep 2
 run_subtest C "GR disabled, full session bounce (baseline)" \
 	trigger_clear_bgp_no_gr "$LOSS_BOUND_C"
 
+echo "===WAIT-RESETTLE-C==="
+$VTYSH_PE1 -c "configure terminal" \
+	-c "router bgp $ASN_PE1" \
+	-c "bgp graceful-restart" \
+	-c "exit" -c "exit"
+$VTYSH_GW1 -c "configure terminal" \
+	-c "router bgp $ASN_GW1" \
+	-c "bgp graceful-restart" \
+	-c "exit" -c "exit"
+for i in $(seq 1 30); do
+	pe_n=$($VTYSH_PE1 -c 'show bgp summary json' 2>/dev/null \
+		| grep -oE '"state":"Established"' | wc -l || echo 0)
+	if [ "$pe_n" -ge 2 ]; then break; fi
+	sleep 1
+done
+sleep 2
+
+# -------------------------------------------------------------------------
+# Sub-test D: GR + clear bgp *  → record only (multi-session ordering)
+#
+# pe1's `clear bgp *` resets BOTH the gw1 and gobgp peerings.  pe1
+# re-establishes with gw1 first (~2s) and sends EOR before the gobgp
+# session has re-converged (~4s extra), so gw1's helper correctly
+# prunes the un-refreshed stale T2ST per RFC 4724 and the kernel
+# install drops for the duration of the gobgp re-converge.  This is a
+# multi-session ordering pitfall, not an FRR bug; recorded but not
+# gated.  Tracked under srv6-mup-issues closed/20260510-041620.
+# -------------------------------------------------------------------------
+run_subtest D "GR enabled, all-session bounce (record-only)" \
+	trigger_clear_bgp_all 9999
+
 # -------------------------------------------------------------------------
 # Verdict
 # -------------------------------------------------------------------------
 echo "===VERDICT==="
-echo "  A (GR+clear)        : $(grep -oE 'sent=[0-9]+ delivered=[0-9]+ lost=[0-9]+' /tmp/gnb/stream-A.txt 2>/dev/null)"
+echo "  A (GR+clear gw1)    : $(grep -oE 'sent=[0-9]+ delivered=[0-9]+ lost=[0-9]+' /tmp/gnb/stream-A.txt 2>/dev/null)"
 echo "  B (GR+soft refresh) : $(grep -oE 'sent=[0-9]+ delivered=[0-9]+ lost=[0-9]+' /tmp/gnb/stream-B.txt 2>/dev/null)"
 echo "  C (no-GR clear)     : $(grep -oE 'sent=[0-9]+ delivered=[0-9]+ lost=[0-9]+' /tmp/gnb/stream-C.txt 2>/dev/null)"
+echo "  D (GR+clear *)      : $(grep -oE 'sent=[0-9]+ delivered=[0-9]+ lost=[0-9]+' /tmp/gnb/stream-D.txt 2>/dev/null)"
 if [ "$PASS" = "1" ]; then
 	echo "FRR-MUP-GR-GOBGP-SCAPY: PASS"
 else
@@ -409,7 +469,7 @@ else
 fi
 
 if [ "$PASS" != "1" ]; then
-	for L in A B C; do
+	for L in A B C D; do
 		echo "===STREAM-${L}-LOG==="
 		cat /tmp/gnb/stream-${L}.log 2>/dev/null | tail -40 || echo "(no stream-${L}.log)"
 		echo "===STREAM-${L}-TXT==="
