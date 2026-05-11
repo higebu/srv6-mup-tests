@@ -168,19 +168,18 @@ inject_set() {
     local isd_pfx=$4          # e.g. 10.10.0.0/24
     local ue_pfx=$5           # e.g. 192.168.10.1/32
     local t1_endpt=$6         # e.g. 10.10.0.1   (must fall inside isd_pfx)
-    local t1_psid=$7          # T1ST prefix-sid SID
-    local t2v4_endpt=$8       # e.g. 10.10.0.1
-    local t2v4_psid=$9
-    local t2v6_endpt=${10}    # e.g. 2001:db8:a::1
-    local t2v6_psid=${11}
+    local t2v4_endpt=$7       # e.g. 10.10.0.1
+    local t2v6_endpt=$8       # e.g. 2001:db8:a::1
 
-    local rt_args=""
-    for r in $rts; do rt_args="$rt_args rt $r"; done
+    local rt_args="rt $rts"
+    local first_rt="${rts%% *}"   # first RT — used as MUP segment id for T2ST
 
     echo "--- Set $label rd=$rd rts='$rts' ---"
 
     # ISD anchor — End.M.GTP4.E behavior, locator from the gobgpd
-    # injector locator block (2001:db8:e::/48).
+    # injector locator block (2001:db8:e::/48).  T1ST/T2ST routes
+    # below resolve their End.M.GTP*.E SID via this ISD per
+    # RFC 9433 Section 6.5/6.6 (bgp_mup_resolve_t1st in bgpd).
     inject global rib add -a ipv4-mup isd $isd_pfx \
         rd $rd prefix 2001:db8:e::/24 locator-node-length 24 \
         function-length 8 behavior ENDM_GTP4E $rt_args \
@@ -188,53 +187,45 @@ inject_set() {
 
     # T1ST -- UE prefix in the per-vrf table (kernel: -4 route show)
     inject global rib add -a ipv4-mup t1st $ue_pfx \
-        rd $rd $rt_args teid 12345 qfi 9 endpoint $t1_endpt \
-        prefix-sid $t1_psid
+        rd $rd $rt_args teid 12345 qfi 9 endpoint $t1_endpt
 
-    # T2ST IPv4 endpoint -> End.M.GTP4.E (kernel seg6local on the SID)
+    # T2ST IPv4 endpoint -> End.M.GTP4.E (kernel seg6local on the SID).
+    # gobgp's parser requires `mup <segment id>` despite docs marking it
+    # optional; cross-correlate via the first RT for traceability.
     inject global rib add -a ipv4-mup t2st $t2v4_endpt \
         rd $rd endpoint-address-length 64 teid 67890 \
-        $rt_args \
-        prefix-sid $t2v4_psid
+        $rt_args mup $first_rt
 
     # T2ST IPv6 endpoint -> End.M.GTP6.E
     inject global rib add -a ipv6-mup t2st $t2v6_endpt \
         rd $rd endpoint-address-length 160 teid 67890 \
-        $rt_args \
-        prefix-sid $t2v6_psid
+        $rt_args mup $first_rt
 }
 
 # Set A — RT 10:10 only
 inject_set A 100:10 "10:10" \
-    10.10.0.0/24 192.168.10.1/32 10.10.0.1 2001:db8:e::a01 \
-    10.10.0.1 2001:db8:e::a10 \
-    2001:db8:a::1 2001:db8:e::a11
+    10.10.0.0/24 192.168.10.1/32 10.10.0.1 \
+    10.10.0.1 \
+    2001:db8:a::1
 
 # Set B — RT 20:20 only
 inject_set B 100:20 "20:20" \
-    10.20.0.0/24 192.168.20.1/32 10.20.0.1 2001:db8:e::b01 \
-    10.20.0.1 2001:db8:e::b10 \
-    2001:db8:b::1 2001:db8:e::b11
+    10.20.0.0/24 192.168.20.1/32 10.20.0.1 \
+    10.20.0.1 \
+    2001:db8:b::1
 
-# Set C — RT 10:10 AND RT 20:20.  Skipped: gobgp 3.10's MUP CLI tags
-# `rt` as paramSingle for ipv4-mup t1st/t2st (cmd/gobgp/global.go),
-# so multi-RT injection is silently truncated to the last `rt` value.
-# The bgpd per-matching-VRF iteration code (bgp_mup_st_announce loop
-# over `bm->bgp` with bgp_mup_route_rt_in_import) is in place; what's
-# missing is a CLI path to inject a multi-RT MUP NLRI.  Tracked in
-# srv6-mup-issues followup `bug-gobgp-mup-cli-rt-paramsingle`.
-if false; then
+# Set C — RT 10:10 AND RT 20:20 (multi-RT).  Requires the gobgp build
+# from osrg/gobgp#3418 (paramList for `rt` in MUP route commands).
 inject_set C 100:30 "10:10 20:20" \
-    10.30.0.0/24 192.168.30.1/32 10.30.0.1 2001:db8:e::c01 \
-    10.30.0.1 2001:db8:e::c10 \
-    2001:db8:c::1 2001:db8:e::c11
-fi
+    10.30.0.0/24 192.168.30.1/32 10.30.0.1 \
+    10.30.0.1 \
+    2001:db8:c::1
 
 # Set D — RT 99:99 (negative case)
 inject_set D 100:40 "99:99" \
-    10.40.0.0/24 192.168.40.1/32 10.40.0.1 2001:db8:e::d01 \
-    10.40.0.1 2001:db8:e::d10 \
-    2001:db8:d::1 2001:db8:e::d11
+    10.40.0.0/24 192.168.40.1/32 10.40.0.1 \
+    10.40.0.1 \
+    2001:db8:d::1
 
 sleep 4
 
@@ -319,12 +310,9 @@ expect_install vrf-blue 192.168.10.1/32 0 "Set A T1ST"
 expect_install vrf-red  192.168.20.1/32 0 "Set B T1ST"
 expect_install vrf-blue 192.168.20.1/32 1 "Set B T1ST"
 
-# Set C -- RT 10:10 + 20:20 -- both VRFs (skipped, see inject_set C
-# fence above; re-enable when gobgp CLI gains multi-RT MUP support).
-if false; then
+# Set C -- RT 10:10 + 20:20 -- both VRFs
 expect_install vrf-red  192.168.30.1/32 1 "Set C T1ST"
 expect_install vrf-blue 192.168.30.1/32 1 "Set C T1ST"
-fi
 
 # Set D -- RT 99:99 -- neither
 expect_install vrf-red  192.168.40.1/32 0 "Set D T1ST"
