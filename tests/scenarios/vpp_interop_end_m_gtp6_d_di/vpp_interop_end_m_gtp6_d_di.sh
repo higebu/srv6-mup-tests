@@ -57,7 +57,7 @@ ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 # After encap the SRH is [orig_D, 2001:db8:e::1] (SRH[0]=D preserved,
 # SRH[1]=S1 is the active segment).
 ip -n srgw -6 route add 2001:db8:f::/64 \
-    encap seg6local action End.M.GTP6.D.Di \
+    encap seg6mobile action End.M.GTP6.D.Di \
         srh segs 2001:db8:e::1 \
         src 2001:db8:2::1 \
     dev veth-e
