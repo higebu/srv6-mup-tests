@@ -54,7 +54,7 @@ ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 # of the IPv6 SA, bytes 12..15 are ignored padding.  This matches VPP's
 # "v6src_prefix .../64" below.
 ip -n srgw -6 route add 2001:db8::/32 \
-    encap seg6local action End.M.GTP4.E \
+    encap seg6mobile action End.M.GTP4.E \
         src 2001:db8:1::2 v4_mask_len 32 \
     dev veth-e
 

@@ -24,7 +24,7 @@ Linux egress / VPP ingress (gnb → VPP → srgw → dn):
 |-------|---------------------------------------------------------------|
 | `gnb` | DL source; scapy emits one IPv4/UDP/GTP-U(TEID 0x123, QFI 5)  |
 | root  | VPP `sr policy add bsid 2001:db8:: next 2001:db8:dead::1 encap` + `t.m.gtp4.d` BSID; steers `10.99.0.0/24` traffic |
-| `srgw`| Linux `seg6local action End.M.GTP4.E`; chained End at `2001:db8:dead::1/128` to drop SL to 0 |
+| `srgw`| Linux `seg6mobile action End.M.GTP4.E`; chained `seg6local action End` at `2001:db8:dead::1/128` to drop SL to 0 |
 | `dn`  | gNB-side DL receiver; tcpdump + scapy assertion               |
 
 ## Address plan

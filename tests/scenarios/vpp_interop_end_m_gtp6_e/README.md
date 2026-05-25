@@ -24,7 +24,7 @@ Linux egress / VPP ingress (gnb → VPP → srgw → dn):
 |-------|---------------------------------------------------------------|
 | `gnb` | DL source; scapy emits IPv6/UDP/GTP-U(TEID 0x123, QFI 5) to `2001:db8:6::1` |
 | root  | VPP `sr localsid prefix 2001:db8:6::/64 behavior end.m.gtp6.d 2001:db8:f::/64 nh-type ipv6 fib-table 0 drop-in` |
-| `srgw`| Linux `seg6local action End.M.GTP6.E src 2001:db8:2::1`       |
+| `srgw`| Linux `seg6mobile action End.M.GTP6.E src 2001:db8:2::1`      |
 | `dn`  | gNB-side DL receiver; tcpdump asserts IPv6 GTP-U with TEID 0x123 |
 
 The `drop-in` flag on VPP's `end.m.gtp6.d` is required: by default
