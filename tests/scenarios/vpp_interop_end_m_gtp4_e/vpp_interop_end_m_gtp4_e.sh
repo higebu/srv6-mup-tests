@@ -48,6 +48,19 @@ ip -n dn  addr add 10.0.1.2/24 dev veth-x-dn
 ip netns exec srgw sysctl -wq net.ipv4.ip_forward=1
 ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 
+# Disable veth's transmit / receive checksum offload so the kernel
+# finalises the UDP/IPv4 checksum in software before the packet hits
+# the wire.  Without this veth treats itself as a HW-csum NIC and
+# the on-wire chksum field stays as the CHECKSUM_PARTIAL pseudo-
+# header seed, which tcpdump (and the scapy verifier below) would
+# read as a bad checksum.
+ip netns exec gnb  ethtool -K veth-g-gnb tx off rx off 2>/dev/null || true
+ethtool -K veth-g tx off rx off 2>/dev/null || true
+ip netns exec srgw ethtool -K veth-e tx off rx off 2>/dev/null || true
+ip netns exec srgw ethtool -K veth-x tx off rx off 2>/dev/null || true
+ip netns exec dn   ethtool -K veth-x-dn tx off rx off 2>/dev/null || true
+ethtool -K veth-e-vpp tx off rx off 2>/dev/null || true
+
 # Linux End.M.GTP4.E: prefix 2001:db8::/32, v4_mask_len 32 — final SID
 # of the SR path; fires when SL=0.  Linux fixes the Source UPF Prefix
 # at /64 (RFC 9433 §6.6 Figure 10 with P=64): IPv4 SA at bytes 8..11
@@ -201,8 +214,21 @@ for p in pkts:
     payload = bytes(p[UDP].payload)
     if len(payload) < 12: continue
     teid = int.from_bytes(payload[4:8], 'big')
-    print(f"Linux egress: src={p[IP].src} dst={p[IP].dst} TEID=0x{teid:08x}")
-    if teid == 0x123: ok = True
+    # RFC 768 lets UDP over IPv4 carry checksum = 0 (no checksum).
+    # Otherwise the field must match what scapy recomputes from the
+    # pseudo-header + UDP body.
+    captured = p[UDP].chksum
+    csum_ok = True
+    if captured != 0:
+        del p[UDP].chksum
+        rebuilt = IP(bytes(p[IP]))
+        if rebuilt[UDP].chksum != captured:
+            csum_ok = False
+            print(f"UDP/IPv4 csum mismatch: pcap=0x{captured:04x} "
+                  f"expected=0x{rebuilt[UDP].chksum:04x}")
+    print(f"Linux egress: src={p[IP].src} dst={p[IP].dst} "
+          f"TEID=0x{teid:08x} udp_csum=0x{captured:04x}")
+    if teid == 0x123 and csum_ok: ok = True
 print("===VPP-INTEROP-END_M_GTP4_E===" + (" PASS" if ok else " FAIL"))
 PY
 kill $VPP_PID 2>/dev/null

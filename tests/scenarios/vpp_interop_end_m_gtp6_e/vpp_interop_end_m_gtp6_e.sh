@@ -47,6 +47,19 @@ ip -n dn  addr add 2001:db8:3::2/64 dev veth-x-dn nodad
 
 ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 
+# Disable veth's transmit / receive checksum offload so the kernel
+# finalises the UDP/IPv6 checksum in software before the packet hits
+# the wire.  Without this veth treats itself as a HW-csum NIC and
+# the on-wire chksum field stays as the CHECKSUM_PARTIAL pseudo-
+# header seed, which tcpdump (and the scapy verifier below) would
+# read as a bad checksum.
+ip netns exec gnb  ethtool -K veth-g-gnb tx off rx off 2>/dev/null || true
+ethtool -K veth-g tx off rx off 2>/dev/null || true
+ip netns exec srgw ethtool -K veth-e tx off rx off 2>/dev/null || true
+ip netns exec srgw ethtool -K veth-x tx off rx off 2>/dev/null || true
+ip netns exec dn   ethtool -K veth-x-dn tx off rx off 2>/dev/null || true
+ethtool -K veth-e-vpp tx off rx off 2>/dev/null || true
+
 # Linux End.M.GTP6.E at locator 2001:db8:f::/64
 ip -n srgw -6 route add 2001:db8:f::/64 \
     encap seg6mobile action End.M.GTP6.E \
@@ -155,8 +168,23 @@ for p in pkts:
     payload = bytes(p[UDP].payload)
     if len(payload) < 12: continue
     teid = int.from_bytes(payload[4:8], 'big')
-    print(f"Linux egress: src={p[IPv6].src} dst={p[IPv6].dst} TEID=0x{teid:08x}")
-    if teid == 0x123: ok = True
+    # RFC 8200 Section 8.1 makes UDP over IPv6 checksum mandatory and
+    # forbids the all-zero value.  Verify the field matches what
+    # scapy recomputes from the pseudo-header + UDP body.
+    captured = p[UDP].chksum
+    csum_ok = (captured != 0)
+    if csum_ok:
+        del p[UDP].chksum
+        rebuilt = IPv6(bytes(p[IPv6]))
+        if rebuilt[UDP].chksum != captured:
+            csum_ok = False
+            print(f"UDP/IPv6 csum mismatch: pcap=0x{captured:04x} "
+                  f"expected=0x{rebuilt[UDP].chksum:04x}")
+    else:
+        print("UDP/IPv6 csum is 0 (RFC 8200 Section 8.1 violation)")
+    print(f"Linux egress: src={p[IPv6].src} dst={p[IPv6].dst} "
+          f"TEID=0x{teid:08x} udp_csum=0x{captured:04x}")
+    if teid == 0x123 and csum_ok: ok = True
 print("===VPP-INTEROP-END_M_GTP6_E===" + (" PASS" if ok else " FAIL"))
 PY
 kill $VPP_PID 2>/dev/null
