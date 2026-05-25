@@ -49,7 +49,7 @@ ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 
 # Linux End.M.GTP6.E at locator 2001:db8:f::/64
 ip -n srgw -6 route add 2001:db8:f::/64 \
-    encap seg6local action End.M.GTP6.E \
+    encap seg6mobile action End.M.GTP6.E \
         src 2001:db8:2::1 \
     dev veth-e
 
