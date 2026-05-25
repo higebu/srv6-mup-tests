@@ -72,7 +72,7 @@ ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 # Args.Mob at /88 keeps the prefix bits 0..87 (= 2001:db8:e::/88) clean
 # and lets VPP install a /128 localsid at the full computed SID.
 ip -n srgw -6 route add 2001:db8:f::/64 \
-    encap seg6local action End.M.GTP6.D \
+    encap seg6mobile action End.M.GTP6.D \
         srh segs 2001:db8:e:: \
         src 2001:db8:2::1 sr_prefix_len 88 \
     dev veth-e
