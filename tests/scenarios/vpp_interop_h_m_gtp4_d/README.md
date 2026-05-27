@@ -22,7 +22,7 @@ Linux ingress / VPP egress (gnb → srgw → VPP → dn):
 | netns | Role                                                          |
 |-------|---------------------------------------------------------------|
 | `gnb` | Plays gNB; scapy emits one IPv4/UDP/GTP-U(TEID 0x123, QFI 5)  |
-| `srgw`| Linux SR Gateway; `ip route ... encap seg6local action H.M.GTP4.D` |
+| `srgw`| Linux SR Gateway; `ip route ... encap seg6mobile action H.M.GTP4.D` |
 | root  | VPP `sr localsid prefix 2001:db8::/32 behavior end.m.gtp4.e`  |
 | `dn`  | Far-side GTP receiver; tcpdump + scapy assertion              |
 
