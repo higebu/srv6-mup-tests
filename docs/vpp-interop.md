@@ -126,7 +126,7 @@ is which end plays Linux MUP encap vs. decap.
 | `2001:db8:1::/64` | gnb ↔ srgw IPv6 link |
 | `2001:db8:2::/64` | srgw ↔ VPP IPv6 link (SR-domain side) |
 | `2001:db8:3::/64` | VPP ↔ dn IPv6 link (far-side observation) |
-| `2001:db8::/32` | End.M.GTP4.E / H.M.GTP4.D SID locator (`v4_mask_len 32`, `sr_prefix_len 32`) — used by `vpp_interop_h_m_gtp4_d` and `vpp_interop_end_m_gtp4_e` |
+| `2001:db8::/32` | End.M.GTP4.E / H.M.GTP4.D SID locator (32-bit IPv4 field, `sr_prefix_len 32`) — used by `vpp_interop_h_m_gtp4_d` and `vpp_interop_end_m_gtp4_e` |
 | `2001:db8:f::/64` | End.M.GTP6.D / End.M.GTP6.D.Di routing prefix (also t.m.gtp6.e SID prefix on the egress side) — used by `vpp_interop_end_m_gtp6_{d,d_di,e}` |
 | `2001:db8:e::/64` | VPP `end.m.gtp6.e` localsid prefix in `vpp_interop_end_m_gtp6_d` |
 | `2001:db8:e::1/128` | VPP plain `End` (RFC 8986) localsid in `vpp_interop_end_m_gtp6_d_di` |

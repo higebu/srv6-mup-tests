@@ -61,14 +61,14 @@ ip netns exec srgw ethtool -K veth-x tx off rx off 2>/dev/null || true
 ip netns exec dn   ethtool -K veth-x-dn tx off rx off 2>/dev/null || true
 ethtool -K veth-e-vpp tx off rx off 2>/dev/null || true
 
-# Linux End.M.GTP4.E: prefix 2001:db8::/32, v4_mask_len 32 — final SID
-# of the SR path; fires when SL=0.  Linux fixes the Source UPF Prefix
-# at /64 (RFC 9433 §6.6 Figure 10 with P=64): IPv4 SA at bytes 8..11
-# of the IPv6 SA, bytes 12..15 are ignored padding.  This matches VPP's
-# "v6src_prefix .../64" below.
+# Linux End.M.GTP4.E: prefix 2001:db8::/32 — final SID of the SR path;
+# fires when SL=0.  The IPv4 DA is the 32 bits after the /32 locator.
+# Linux fixes the Source UPF Prefix at /64 (RFC 9433 Figure 10 with
+# P=64): the IPv4 SA is the 32 bits at bytes 8..11 of the inbound IPv6
+# SA, bytes 12..15 are ignored.  This matches VPP's "v6src_prefix
+# .../64" below.
 ip -n srgw -6 route add 2001:db8::/32 \
     encap seg6mobile action End.M.GTP4.E \
-        src 2001:db8:1::2 v4_mask_len 32 \
     dev veth-e
 
 # Generic RFC 8986 End at the "実体側" placeholder SID (= the segment

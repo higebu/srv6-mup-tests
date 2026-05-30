@@ -46,7 +46,7 @@ ip netns exec srgw sysctl -wq net.ipv6.conf.all.forwarding=1
 
 ip -n srgw -4 route add 10.99.0.0/24 \
     encap seg6mobile action H.M.GTP4.D \
-        srh segs 2001:db8:: src 2001:db8:2::1 v4_mask_len 32 sr_prefix_len 32 \
+        srh segs 2001:db8:: src 2001:db8:2::1 sr_prefix_len 32 \
     dev veth-e
 ip -n srgw -6 route add 2001:db8::/32 via 2001:db8:2::e dev veth-e
 

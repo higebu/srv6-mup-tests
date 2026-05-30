@@ -33,7 +33,7 @@ Linux ingress / VPP egress (gnb → srgw → VPP → dn):
 | gnb ↔ srgw IPv4                 | `10.0.0.0/24` (gnb=.2, srgw=.1)        |
 | srgw ↔ VPP IPv6 (SR-domain)     | `2001:db8:2::1/64` ↔ `::e/64`          |
 | VPP ↔ dn IPv4                   | `10.0.1.0/24` (VPP=.1, dn=.2)          |
-| End.M.GTP4.E SID locator        | `2001:db8::/32` (`v4_mask_len 32`, `sr_prefix_len 32`) |
+| End.M.GTP4.E SID locator        | `2001:db8::/32` (32-bit IPv4 field, `sr_prefix_len 32`) |
 | Far-side IPv4 (encoded in SID)  | `10.99.0.0/24`                         |
 
 ## How to run
