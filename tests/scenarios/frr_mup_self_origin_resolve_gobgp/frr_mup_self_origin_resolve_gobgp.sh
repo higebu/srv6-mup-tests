@@ -184,7 +184,7 @@ echo "$GLOBAL_RIB" | grep -qE '\[3\]:.*192\.168\.10\.5' \
 # default-vrf IPv6 FIB.  This is the install that data-plane traffic
 # actually relies on, regardless of whether the T1ST install in
 # vrf-blue/vrf-red ever lands.
-ISD_INSTALL=$(ip -n gw1 -d -6 route show 2>&1 | grep -E 'End\.M\.GTP4\.E.*oif vrf-red' | head -1)
+ISD_INSTALL=$(ip -n gw1 -d -6 route show 2>&1 | grep -E 'End\.M\.GTP4\.E.*dev vrf-red' | head -1)
 [ -n "$ISD_INSTALL" ] \
 	|| fail "default-vrf IPv6 FIB missing End.M.GTP4.E install for vrf-red's ISD"
 
