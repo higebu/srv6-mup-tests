@@ -256,12 +256,18 @@ sleep 1
 # OSPFv3 SRv6 locator advertisements; the tests use static routes
 # in default vrf for the same effect.  These could move into frr.conf
 # but staticd needs them shipped via vtysh because in-conf static
-# routes only land after staticd reads its zserv connection.  zebra's
-# cross-vrf recursive nexthop resolution lets per-vrf BGP-MUP installs
-# reach the underlay without needing the route duplicated into each
-# slice's table (same pattern as L3VPN's vpn_leak_to_vrf installs).
+# routes only land after staticd reads its zserv connection.
 $VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
 $VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
+
+# The seg6_mobile datapath does NOT recurse the rebuilt-SRv6 egress lookup
+# across VRFs: H.M.GTP4.D / End.M.GTP6.D re-route the new packet with
+# seg6_lookup_nexthop(skb, NULL, vrftable), a single lookup in the VRF
+# table named by SEG6_MOBILE_VRFTABLE (the slice table here).  So the
+# SR-domain locator for the egress SID must be reachable *inside* that
+# slice table — leak it in (production: per-VRF locator advertisement).
+ip -n pe1 -6 route add table 100 2001:db8:f::/48 via 2001:db8:1::1 dev veth-pe-sr onlink
+ip -n gw1 -6 route add table 100 2001:db8:e::/48 via 2001:db8:1::2 dev veth-gw-sr onlink
 
 # `segment direct` for vrf-red is declared in pe1/frr.conf under
 # `router bgp $ASN_PE1 vrf vrf-red`; bgpd's locator-arrival hook
@@ -417,16 +423,17 @@ PE1_T1ST_MAIN=$(ip -n pe1 -4 route show table main $UE_PFX 2>&1 | head -1)
 [ -z "$PE1_T1ST_MAIN" ] || \
 	fail "pe1: T1ST leaked into main FIB (slice isolation broken): $PE1_T1ST_MAIN"
 
-# (2) gw1's T2ST install: encap seg6local action H.M.GTP4.D nh6 <pe1-DSD-SID>.
+# (2) gw1's T2ST install: encap seg6mobile action H.M.GTP4.D, SR Policy
+# SID carried as a single-segment SRH = [pe1-DSD-SID].
 # Same vrf-red expectation as (1).
 GW1_T2ST=$(ip -n gw1 -d -4 route show table 100 $T2ST_EP 2>&1 | head -1)
 case "$GW1_T2ST" in
-	*"encap seg6local"*"H.M.GTP4.D"*) ;;
+	*"encap seg6mobile"*"H.M.GTP4.D"*) ;;
 	*) fail "gw1: T2ST install missing 'H.M.GTP4.D' action in vrf-red (got: $GW1_T2ST)" ;;
 esac
 if [ -n "$PE_DSD_SID" ]; then
 	if ! echo "$GW1_T2ST" | grep -qF "$PE_DSD_SID"; then
-		fail "gw1: T2ST nh6 != pe1's DSD SID $PE_DSD_SID (got: $GW1_T2ST)"
+		fail "gw1: T2ST SRH SID != pe1's DSD SID $PE_DSD_SID (got: $GW1_T2ST)"
 	fi
 fi
 GW1_T2ST_MAIN=$(ip -n gw1 -4 route show table main $T2ST_EP 2>&1 | head -1)
