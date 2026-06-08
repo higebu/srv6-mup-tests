@@ -193,8 +193,14 @@ $VTYSH_PE1 -f /tmp/pe1/frr.conf
 $VTYSH_GW1 -f /tmp/gw1/frr.conf
 
 sleep 1
-$VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
-$VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
+# SR-domain underlay ("forward to B") resolve in the global table: the
+# T1ST/H.M.GTP4.D nexthop recurses on the gate SID locator, which is
+# reachable in the shared SR underlay (one SR domain, not a per-slice
+# FIB).  Leak it as a kernel route in the default vrf, mirroring
+# frr_mup_e2e_gobgp_scapy — vtysh staticd does not reliably program the
+# onlink nexthop in this single-VM topology.
+ip -n pe1 -6 route add 2001:db8:f::/48 via 2001:db8:1::1 dev veth-pe-sr onlink
+ip -n gw1 -6 route add 2001:db8:e::/48 via 2001:db8:1::2 dev veth-gw-sr onlink
 
 # -------------------------------------------------------------------------
 # Start gobgpd in gbgp + inject T1ST + T2ST as MUP-Controller

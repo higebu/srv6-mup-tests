@@ -267,8 +267,10 @@ done
 # Wait for the remote locator routes to actually land in zebra (SPF
 # convergence after adjacency is up).  The kernel routes are tagged
 # `proto isis`; check the kernel directly instead of vtysh's RIB
-# rendering, which has churned across FRR versions.
-for i in $(seq 1 30); do
+# rendering, which has churned across FRR versions.  Default IS-IS
+# LSP-gen / SPF throttling can push locator propagation past 20s, so
+# allow the same 60s budget as the BGP-session wait below.
+for i in $(seq 1 60); do
 	pe_r=$(ip -n pe1 -6 route show 2001:db8:f::/48 proto isis 2>/dev/null | wc -l)
 	gw_r=$(ip -n gw1 -6 route show 2001:db8:e::/48 proto isis 2>/dev/null | wc -l)
 	echo "  try=$i pe1->gw1_loc=$pe_r gw1->pe1_loc=$gw_r"
