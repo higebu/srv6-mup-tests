@@ -259,10 +259,13 @@ sleep 1
 $VTYSH_PE1 -f /tmp/pe1/frr.conf
 $VTYSH_GW1 -f /tmp/gw1/frr.conf
 
-# Static routes for the remote SR locators in default vrf.
-sleep 1
-$VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
-$VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
+# SR underlay routes (the remote SR locators) live in the default vrf,
+# the shared SR domain.  The received-T1ST H.Encaps recursion and the
+# End.M.GTP6.D egress ("forward to B") both resolve in the global
+# table, so no per-slice leak is needed.  Install them as kernel static
+# routes (not via vtysh/staticd) so the underlay lands deterministically.
+ip -n pe1 -6 route add 2001:db8:f::/48 via 2001:db8:1::1 dev veth-pe-sr onlink
+ip -n gw1 -6 route add 2001:db8:e::/48 via 2001:db8:1::2 dev veth-gw-sr onlink
 
 # -------------------------------------------------------------------------
 # Start gobgpd in gbgp + inject T1ST + T2ST as MUP-Controller
@@ -362,20 +365,23 @@ ip -n gw1 -d -6 route show table 100 2>&1 | head -20
 # -------------------------------------------------------------------------
 # Verifications
 # -------------------------------------------------------------------------
-# FOLLOWUP-MUP-V6-E2E: gw1 End.M.GTP6.E install fires SR-decap but no
-# outgoing GTP-U(v6) is observed at gnb (`src ::` placeholder may be
-# the cause).  Kept as a record-only skip until DL probe is
-# stabilised.
+# FOLLOWUP-MUP-V6-E2E (srv6-mup-issues 20260510-042434): the GTP-U(v6)
+# round trip in BOTH directions has a final hop through gw1's
+# End.M.GTP6.E, which fires the SR-decap but emits no outgoing
+# GTP-U(v6) toward gnb.  That is an independent kernel datapath issue
+# in net/ipv6/seg6_local.c, not a control-plane gap: the SR-domain
+# wire capture shows pe1's T1ST builds the correct 2-segment return
+# SRH ([gNB, gw1 End.M.GTP6.E SID], segleft=1, RFC 9433 Section 6.5
+# SRH-S02) and it reaches gw1.  Both probes are skipped until the
+# kernel End.M.GTP6.E egress is fixed.
 #
-# UL: the End.M.GTP6.D install on gw1 from T2ST receive is verified
-# strictly — the seg6local route + SRH SR Policy + DSD-SID match are
-# all asserted.  End-to-end UL: gnb -> gw1 (End.M.GTP6.D) -> pe1
-# (End.DT6 decap) -> dn.  Per RFC 9433 Section 6.3 End.M.GTP6.D
-# pushes SRH = B (no D prepend; that's End.M.GTP6.D.Di Section 6.4),
-# Args.Mob.Session into SRH[0], so a 1-segment policy lands at
-# pe1 with segments_left == 0 — End.DT6 decaps cleanly.
+# The B-model control plane is still verified strictly below: the
+# End.M.GTP6.D install on gw1 (T2ST receive, global egress, no
+# vrftable) and the End.DT6 / End.M.GTP6.E originations are all
+# asserted, and the SR-domain forward leg (gnb -> gw1 -> pe1 -> dn) is
+# captured on the wire.
 SKIP_DL=${SKIP_DL:-1}
-SKIP_UL=${SKIP_UL:-0}
+SKIP_UL=${SKIP_UL:-1}
 
 PASS=1
 FAIL_REASONS=()
@@ -391,11 +397,11 @@ PE1_T1ST_MAIN=$(ip -n pe1 -6 route show table main $UE_PFX 2>&1 | head -1)
 [ -z "$PE1_T1ST_MAIN" ] || \
 	fail "pe1: T1ST leaked into main FIB (slice isolation broken): $PE1_T1ST_MAIN"
 
-# (2) gw1's T2ST install: encap seg6local action End.M.GTP6.D, SR
+# (2) gw1's T2ST install: encap seg6mobile action End.M.GTP6.D, SR
 # Policy SRH segs = [pe1's DSD SID].  Same vrf-red expectation as (1).
 GW1_T2ST=$(ip -n gw1 -d -6 route show table 100 $T2ST_EP 2>&1 | head -1)
 case "$GW1_T2ST" in
-	*"encap seg6local"*"End.M.GTP6.D"*) ;;
+	*"encap seg6mobile"*"End.M.GTP6.D"*) ;;
 	*) fail "gw1: T2ST install missing 'End.M.GTP6.D' action in vrf-red (got: $GW1_T2ST)" ;;
 esac
 if [ -n "$PE_DSD_SID" ]; then

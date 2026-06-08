@@ -248,26 +248,20 @@ sleep 1
 $VTYSH_PE1 -f /tmp/pe1/frr.conf
 $VTYSH_GW1 -f /tmp/gw1/frr.conf
 
-# staticd doesn't take a config file; push the static IPv6 routes for
-# the SR domain via vtysh after the daemons are up.
-sleep 1
 # SR underlay routes (the remote MUP-PE/GW locators) live in the
-# default vrf — production deployments populate them via IS-IS or
-# OSPFv3 SRv6 locator advertisements; the tests use static routes
-# in default vrf for the same effect.  These could move into frr.conf
-# but staticd needs them shipped via vtysh because in-conf static
-# routes only land after staticd reads its zserv connection.
-$VTYSH_PE1 -c "configure terminal" -c "ipv6 route 2001:db8:f::/48 2001:db8:1::1 veth-pe-sr onlink" -c "exit"
-$VTYSH_GW1 -c "configure terminal" -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-gw-sr onlink" -c "exit"
-
-# The seg6_mobile datapath does NOT recurse the rebuilt-SRv6 egress lookup
-# across VRFs: H.M.GTP4.D / End.M.GTP6.D re-route the new packet with
-# seg6_lookup_nexthop(skb, NULL, vrftable), a single lookup in the VRF
-# table named by SEG6_MOBILE_VRFTABLE (the slice table here).  So the
-# SR-domain locator for the egress SID must be reachable *inside* that
-# slice table — leak it in (production: per-VRF locator advertisement).
-ip -n pe1 -6 route add table 100 2001:db8:f::/48 via 2001:db8:1::1 dev veth-pe-sr onlink
-ip -n gw1 -6 route add table 100 2001:db8:e::/48 via 2001:db8:1::2 dev veth-gw-sr onlink
+# default vrf — the shared SR domain.  Production deployments populate
+# them via IS-IS / OSPFv3 SRv6 locator advertisements (see the isis
+# variant); the tests install them as kernel static routes for the
+# same effect.  Use `ip route` rather than vtysh/staticd so the
+# underlay lands deterministically, independent of when staticd reads
+# its zserv connection.
+#
+# Both the received-T1ST H.Encaps recursion and the H.M.GTP4.D /
+# End.M.GTP6.D egress ("forward to B") resolve in the global table:
+# the SR underlay is shared across slices, not a per-slice FIB, so no
+# per-slice leak of the SR-domain locator is needed.
+ip -n pe1 -6 route add 2001:db8:f::/48 via 2001:db8:1::1 dev veth-pe-sr onlink
+ip -n gw1 -6 route add 2001:db8:e::/48 via 2001:db8:1::2 dev veth-gw-sr onlink
 
 # `segment direct` for vrf-red is declared in pe1/frr.conf under
 # `router bgp $ASN_PE1 vrf vrf-red`; bgpd's locator-arrival hook

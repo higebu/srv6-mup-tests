@@ -430,11 +430,11 @@ PE1_T1ST_MAIN=$(ip -n pe1 -4 route show table main $UE_PFX 2>&1 | head -1)
 [ -z "$PE1_T1ST_MAIN" ] || \
 	fail "pe1: T1ST leaked into main FIB (slice isolation broken): $PE1_T1ST_MAIN"
 
-# (2) gw1's T2ST install: encap seg6local action H.M.GTP4.D nh6 <pe1-DSD-SID>.
+# (2) gw1's T2ST install: encap seg6mobile action H.M.GTP4.D nh6 <pe1-DSD-SID>.
 # Same vrf-red expectation as (1).
 GW1_T2ST=$(ip -n gw1 -d -4 route show table 100 $T2ST_EP 2>&1 | head -1)
 case "$GW1_T2ST" in
-	*"encap seg6local"*"H.M.GTP4.D"*) ;;
+	*"encap seg6mobile"*"H.M.GTP4.D"*) ;;
 	*) fail "gw1: T2ST install missing 'H.M.GTP4.D' action in vrf-red (got: $GW1_T2ST)" ;;
 esac
 if [ -n "$PE_DSD_SID" ]; then

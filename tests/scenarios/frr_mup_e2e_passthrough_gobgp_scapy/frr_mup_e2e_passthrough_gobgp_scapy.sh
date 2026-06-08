@@ -255,7 +255,7 @@ ip -n gw1 -d -4 route show table 100 2>&1
 # (1) gw1 vrf-red MUP install: T2ST H.M.GTP4.D action present (regression).
 GW1_T2ST=$(ip -n gw1 -d -4 route show table 100 $T2ST_EP 2>&1 | head -1)
 case "$GW1_T2ST" in
-	*"encap seg6local"*"H.M.GTP4.D"*) ;;
+	*"encap seg6mobile"*"H.M.GTP4.D"*) ;;
 	*) fail "gw1: T2ST install missing 'H.M.GTP4.D' action in vrf-red (got: $GW1_T2ST)" ;;
 esac
 
