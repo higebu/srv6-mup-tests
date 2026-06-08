@@ -365,23 +365,16 @@ ip -n gw1 -d -6 route show table 100 2>&1 | head -20
 # -------------------------------------------------------------------------
 # Verifications
 # -------------------------------------------------------------------------
-# FOLLOWUP-MUP-V6-E2E (srv6-mup-issues 20260510-042434): the GTP-U(v6)
-# round trip in BOTH directions has a final hop through gw1's
-# End.M.GTP6.E, which fires the SR-decap but emits no outgoing
-# GTP-U(v6) toward gnb.  That is an independent kernel datapath issue
-# in net/ipv6/seg6_local.c, not a control-plane gap: the SR-domain
-# wire capture shows pe1's T1ST builds the correct 2-segment return
-# SRH ([gNB, gw1 End.M.GTP6.E SID], segleft=1, RFC 9433 Section 6.5
-# SRH-S02) and it reaches gw1.  Both probes are skipped until the
-# kernel End.M.GTP6.E egress is fixed.
-#
-# The B-model control plane is still verified strictly below: the
-# End.M.GTP6.D install on gw1 (T2ST receive, global egress, no
-# vrftable) and the End.DT6 / End.M.GTP6.E originations are all
-# asserted, and the SR-domain forward leg (gnb -> gw1 -> pe1 -> dn) is
-# captured on the wire.
-SKIP_DL=${SKIP_DL:-1}
-SKIP_UL=${SKIP_UL:-1}
+# Both directions of the GTP-U(v6) round trip pass: gnb -> gw1
+# End.M.GTP6.D (global egress) -> pe1 End.DT6 -> dn, and the reply
+# dn -> pe1 T1ST (2-segment return SRH [gNB, gw1 End.M.GTP6.E SID],
+# segleft=1, RFC 9433 Section 6.5 SRH-S02) -> gw1 End.M.GTP6.E -> gnb.
+# The End.M.GTP6.E localsid is originated with a non-zero outer IPv6
+# source (the SID locator base), without which the kernel dropped the
+# rebuilt GTP-U on the IPv6 output path (was srv6-mup-issues
+# 20260510-042434).
+SKIP_DL=${SKIP_DL:-0}
+SKIP_UL=${SKIP_UL:-0}
 
 PASS=1
 FAIL_REASONS=()
