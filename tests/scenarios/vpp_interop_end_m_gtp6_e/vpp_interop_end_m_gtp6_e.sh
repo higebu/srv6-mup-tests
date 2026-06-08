@@ -64,6 +64,7 @@ ethtool -K veth-e-vpp tx off rx off 2>/dev/null || true
 ip -n srgw -6 route add 2001:db8:f::/64 \
     encap seg6mobile action End.M.GTP6.E \
         src 2001:db8:2::1 \
+        sr_prefix_len 64 \
     dev veth-e
 
 # After Linux End.M.GTP6.E decap, the new GTP-U dst = SRH segments[0]
