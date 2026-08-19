@@ -41,10 +41,18 @@ Bootstrap it once with:
 docker run --name srv6mup-build-noble ubuntu:24.04 bash -c '
     apt-get update &&
     apt-get install -y --no-install-recommends \
-        build-essential dpkg-dev debhelper'
+        build-essential dpkg-dev debhelper \
+        bison flex pkgconf pkg-config \
+        libatm1-dev libcap-dev libdb-dev libelf-dev libmnl-dev \
+        libselinux1-dev libtirpc-dev libxtables-dev'
 docker commit srv6mup-build-noble srv6mup-build:noble
 docker rm srv6mup-build-noble
 ```
+
+`bison` and `flex` are not optional: without them iproute2's
+`emp_ematch.tab.c` rule dies with `Error 127` and — before
+`_build_iproute2_inside_docker.sh` grew `set -o pipefail` — the script
+happily packed an empty 9 KB `iproute2` deb.
 
 ## Running
 

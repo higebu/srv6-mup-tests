@@ -1,5 +1,8 @@
 #!/bin/bash
+# pipefail matters: the build steps below pipe through `tail`, so without
+# it a failing configure/make is masked and an empty .deb is produced.
 set -e
+set -o pipefail
 cp -r /src /build-src
 cd /build-src
 make clean 2>&1 | tail -1
