@@ -12,7 +12,20 @@ make -j$(nproc) 2>&1 | tail -2
 STAGING=/tmp/staging
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
-make install DESTDIR="$STAGING" SBINDIR=/sbin BINDIR=/bin 2>&1 | tail -1
+make install DESTDIR="$STAGING" SBINDIR=/usr/sbin BINDIR=/usr/bin 2>&1 | tail -1
+
+# Reproduce the stock Ubuntu split.  This is not cosmetic: the DEBIAN/
+# control archive cribbed from the stock deb further down carries a
+# postinst that setcaps /bin/ip, which only resolves once ip really is
+# in /usr/bin.  iproute2's install rule puts everything in SBINDIR.
+mkdir -p "$STAGING/usr/bin"
+for b in ip lnstat ctstat rtstat netshaper nstat rdma routel ss; do
+  mv "$STAGING/usr/sbin/$b" "$STAGING/usr/bin/$b"
+done
+ln -s ../bin/ip "$STAGING/usr/sbin/ip"
+# The standalone ifstat package owns /usr/bin/ifstat; stock iproute2
+# leaves it out.
+rm -f "$STAGING/usr/sbin/ifstat"
 
 # stage etc files referenced as conffiles by Ubuntu's deb
 mkdir -p "$STAGING/etc/iproute2"
@@ -50,72 +63,5 @@ fi
 
 mkdir -p /out
 dpkg-deb --build --root-owner-group "$STAGING" "/out/iproute2_${NEW_VER}_amd64.deb"
-
-# Now build iproute2-doc deb (man pages + examples)
-DOC_STAGING=/tmp/doc-staging
-rm -rf "$DOC_STAGING"
-mkdir -p "$DOC_STAGING/usr/share/doc/iproute2-doc"
-mkdir -p "$DOC_STAGING/usr/share/man/man8"
-mkdir -p "$DOC_STAGING/usr/share/man/man7"
-# install man pages from our build
-if [ -d /build-src/man/man8 ]; then
-  for m in /build-src/man/man8/*.8; do
-    [ -f "$m" ] && cp "$m" "$DOC_STAGING/usr/share/man/man8/"
-  done
-fi
-if [ -d /build-src/man/man7 ]; then
-  for m in /build-src/man/man7/*.7; do
-    [ -f "$m" ] && cp "$m" "$DOC_STAGING/usr/share/man/man7/"
-  done
-fi
-# gzip man pages per Debian policy
-find "$DOC_STAGING/usr/share/man" -type f -name "*.[1-9]" -exec gzip -9n {} \;
-# examples
-if [ -d /build-src/examples ]; then
-  cp -r /build-src/examples "$DOC_STAGING/usr/share/doc/iproute2-doc/"
-fi
-
-# Reuse Ubuntu doc deb's control archive
-mkdir -p /tmp/old-doc-extract
-dpkg-deb -e /reference-doc.deb /tmp/old-doc-extract/DEBIAN 2>/dev/null || true
-if [ -f /tmp/old-doc-extract/DEBIAN/control ]; then
-  cp -r /tmp/old-doc-extract/DEBIAN "$DOC_STAGING/"
-  sed -i "s/^Version:.*/Version: ${NEW_VER}/" "$DOC_STAGING/DEBIAN/control"
-else
-  # Fallback: minimal control file
-  mkdir -p "$DOC_STAGING/DEBIAN"
-  cat > "$DOC_STAGING/DEBIAN/control" <<EOF
-Package: iproute2-doc
-Source: iproute2
-Version: ${NEW_VER}
-Architecture: all
-Maintainer: Yuya Kusakabe <y-kusakabe@bbsakura.net>
-Section: doc
-Priority: optional
-Multi-Arch: foreign
-Homepage: https://wiki.linuxfoundation.org/networking/iproute2
-Description: networking and traffic control tools - documentation
- The iproute2 suite is a collection of utilities for networking and
- traffic control.
- .
- This package contains the documentation including manual pages and
- examples.
-EOF
-fi
-
-if [ -f "$DOC_STAGING/DEBIAN/conffiles" ]; then
-  : > "$DOC_STAGING/DEBIAN/conffiles.new"
-  while read -r line; do
-    line_clean="${line#/}"
-    if [ -e "$DOC_STAGING/$line_clean" ]; then
-      echo "$line" >> "$DOC_STAGING/DEBIAN/conffiles.new"
-    fi
-  done < "$DOC_STAGING/DEBIAN/conffiles"
-  mv "$DOC_STAGING/DEBIAN/conffiles.new" "$DOC_STAGING/DEBIAN/conffiles"
-fi
-
-( cd "$DOC_STAGING" && find . -path ./DEBIAN -prune -o -type f -print | sed 's|^\./||' | xargs -d '\n' md5sum 2>/dev/null > DEBIAN/md5sums )
-
-dpkg-deb --build --root-owner-group "$DOC_STAGING" "/out/iproute2-doc_${NEW_VER}_all.deb"
 
 ls -la /out/

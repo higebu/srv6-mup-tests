@@ -6,7 +6,7 @@
 #
 # Inputs (env vars, defaults in parens):
 #   VERSION      Bundle release tag, e.g. v28           (required)
-#   STAGE_DIR    Directory holding the 12 release files (/tmp/srv6-mup-release)
+#   STAGE_DIR    Directory holding the 11 release files (/tmp/srv6-mup-release)
 #   OUT          Output tarball path                    (~/srv6-mup-bundle-${VERSION}.tar.gz)
 #
 # The tarball expands into a single top-level directory
@@ -22,14 +22,13 @@ OUT=${OUT:-$HOME/srv6-mup-bundle-${VERSION}.tar.gz}
 
 [ -d "$STAGE_DIR" ] || { echo "STAGE_DIR not found: $STAGE_DIR" >&2; exit 1; }
 
-# Sanity-check the expected 12 artifacts before packing.
+# Sanity-check the expected 11 artifacts before packing.
 required=(
     bzImage-*
     linux-image-*.deb
     linux-headers-*.deb
     linux-libc-dev_*.deb
     iproute2_*.deb
-    iproute2-doc_*.deb
     frr_*.deb
     frr-doc_*.deb
     frr-pythontools_*.deb
