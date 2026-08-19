@@ -34,10 +34,14 @@ srv6-mup-bundle/
 
 ### One-time Docker image setup
 
-The build script invokes the container image `srv6mup-build:noble`.
-Bootstrap it once with:
+`build_tarball.sh` invokes `srv6mup-build:noble`; `build_frr_deb.sh`
+invokes `srv6mup-build:$UBUNTU_SUITE`, which defaults to
+`srv6mup-build:resolute`.  Bootstrap whichever suite you target once
+with:
 
 ```bash
+# Ubuntu 24.04 LTS (noble); swap noble -> resolute and 24.04 -> 26.04
+# for the Ubuntu 26.04 LTS image.
 docker run --name srv6mup-build-noble ubuntu:24.04 bash -c '
     apt-get update &&
     apt-get install -y --no-install-recommends \
@@ -53,6 +57,10 @@ docker rm srv6mup-build-noble
 `emp_ematch.tab.c` rule dies with `Error 127` and — before
 `_build_iproute2_inside_docker.sh` grew `set -o pipefail` — the script
 happily packed an empty 9 KB `iproute2` deb.
+
+Ubuntu 26.04 dropped `libyang2`, so an FRR deb built for noble cannot be
+installed on resolute.  The resolute build links against `libyang3`,
+which is in the resolute archive's `main` component.
 
 ## Running
 

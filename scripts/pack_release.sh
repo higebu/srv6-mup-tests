@@ -63,11 +63,11 @@ packed into a single tarball.
 See the GitHub release notes for the per-file table, source-branch
 commit SHAs, install instructions, and verification steps.
 
+Ubuntu 26.04 LTS (resolute) only -- the FRR debs link against libyang3,
+which Ubuntu 24.04 does not ship.  Use v41 for 24.04.
+
 \`\`\`bash
-sudo apt-get install -y ./linux-*.deb ./iproute2*.deb
-# FRR (after adding the FRR apt repo for libyang2 >= 2.1.128 - see
-# release notes):
-sudo apt-get install -y ./frr*.deb
+sudo apt-get install -y ./linux-*.deb ./iproute2*.deb ./frr*.deb
 \`\`\`
 EOF
 

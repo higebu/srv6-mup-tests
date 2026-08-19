@@ -1,12 +1,13 @@
 #!/bin/bash
 #
-# Build the SRv6 MUP FRR Ubuntu Noble debs from the seg6-mobile branch of
-# the sibling FRR tree (default: <parent>/frr).
+# Build the SRv6 MUP FRR Ubuntu debs from a branch of the sibling FRR
+# tree (default: <parent>/frr).
 #
-# The build runs inside the same srv6mup-build:noble container used by
-# scripts/build_tarball.sh (see docs/build-tarball.md for one-time
-# bootstrap), with FRR's own apt repo enabled so libyang2-dev (>= 2.1.128)
-# is available.
+# The build runs inside an srv6mup-build:$UBUNTU_SUITE container (see
+# docs/build-tarball.md for one-time bootstrap), with FRR's own apt repo
+# enabled.  noble needs that repo because the Ubuntu 24.04 archive has no
+# libyang >= 3.0.3; resolute ships libyang-dev in main, where the repo is
+# redundant but harmless.
 #
 # Inputs (env vars, defaults in parens):
 #   FRR              FRR source tree                (~/ghq/github.com/higebu/frr,
@@ -20,13 +21,16 @@
 #                                                    (<branch>)")
 #   DEBEMAIL         Maintainer email               (yuya.kusakabe@gmail.com)
 #   DEBFULLNAME      Maintainer full name           (Yuya Kusakabe)
-#   DOCKER_IMG       Build container image          (srv6mup-build:noble)
+#   UBUNTU_SUITE     Target Ubuntu suite            (resolute = 26.04;
+#                                                    noble = 24.04)
+#   DOCKER_IMG       Build container image          (srv6mup-build:$UBUNTU_SUITE)
 #   OUT_DIR          Where finished debs are placed (/tmp/srv6-mup-release)
 #   WORK_DIR         Temporary worktree path        (/tmp/frr-deb-build)
 #
 # The script:
 #   1. Creates a detached worktree of $FRR at $FRR_BRANCH in $WORK_DIR.
-#   2. Runs dch --newversion 10.6.0~dev+${FRR_PKG_TAG}-0ubuntu1~noble1.
+#   2. Runs dch --newversion <configure.ac version>+${FRR_PKG_TAG}-
+#      0ubuntu1~${UBUNTU_SUITE}1.
 #   3. Inside $DOCKER_IMG, enables deb.frrouting.org, installs build deps,
 #      runs dpkg-buildpackage -b -us -uc, copies the resulting *.deb
 #      out to $WORK_DIR/_artifacts.
@@ -51,11 +55,10 @@ FRR_PKG_TAG=${FRR_PKG_TAG:?set FRR_PKG_TAG (e.g. srv6mup2)}
 FRR_DCH_MSG=${FRR_DCH_MSG:-"BGP-MUP SAFI + SRv6 Mobile User Plane (${FRR_BRANCH})"}
 DEBEMAIL=${DEBEMAIL:-yuya.kusakabe@gmail.com}
 DEBFULLNAME=${DEBFULLNAME:-Yuya Kusakabe}
-DOCKER_IMG=${DOCKER_IMG:-srv6mup-build:noble}
+UBUNTU_SUITE=${UBUNTU_SUITE:-resolute}
+DOCKER_IMG=${DOCKER_IMG:-srv6mup-build:${UBUNTU_SUITE}}
 OUT_DIR=${OUT_DIR:-/tmp/srv6-mup-release}
 WORK_DIR=${WORK_DIR:-/tmp/frr-deb-build}
-
-VER="10.6.0~dev+${FRR_PKG_TAG}-0ubuntu1~noble1"
 
 mkdir -p "$OUT_DIR"
 
@@ -68,30 +71,38 @@ fi
 echo "==> git worktree add $WORK_DIR ($FRR_BRANCH)"
 git -C "$FRR" worktree add --detach "$WORK_DIR" "$FRR_BRANCH"
 
+# Take the upstream version from the branch so it cannot go stale.  FRR
+# spells it 10.8.0-dev; Debian needs 10.8.0~dev to sort below 10.8.0.
+FRR_BASE_VER=$(sed -n 's/^AC_INIT(\[frr\], \[\([^]]*\)\].*/\1/p' \
+    "$WORK_DIR/configure.ac" | sed 's/-dev$/~dev/')
+[ -n "$FRR_BASE_VER" ] || { echo "cannot parse AC_INIT version" >&2; exit 1; }
+VER="${FRR_BASE_VER}+${FRR_PKG_TAG}-0ubuntu1~${UBUNTU_SUITE}1"
+
 echo "==> dch --newversion $VER"
 ( cd "$WORK_DIR" && DEBEMAIL="$DEBEMAIL" DEBFULLNAME="$DEBFULLNAME" \
     dch --force-bad-version --newversion "$VER" \
-        --distribution noble --force-distribution "$FRR_DCH_MSG" )
+        --distribution "$UBUNTU_SUITE" --force-distribution "$FRR_DCH_MSG" )
 head -1 "$WORK_DIR/debian/changelog"
 
 mkdir -p "$WORK_DIR/_artifacts"
 
 echo "==> dpkg-buildpackage inside $DOCKER_IMG"
-docker run --rm -v "$WORK_DIR":/build -w /build "$DOCKER_IMG" bash -c '
+docker run --rm -v "$WORK_DIR":/build -w /build \
+    -e UBUNTU_SUITE="$UBUNTU_SUITE" "$DOCKER_IMG" bash -c '
     set -e
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl ca-certificates >/dev/null 2>&1
     curl -fsSL https://deb.frrouting.org/frr/keys.gpg \
         -o /usr/share/keyrings/frr.gpg
-    echo "deb [signed-by=/usr/share/keyrings/frr.gpg] https://deb.frrouting.org/frr noble frr-stable" \
+    echo "deb [signed-by=/usr/share/keyrings/frr.gpg] https://deb.frrouting.org/frr $UBUNTU_SUITE frr-stable" \
         > /etc/apt/sources.list.d/frr.list
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bison chrpath flex gawk install-info \
         libc-ares-dev libcap-dev libelf-dev libjson-c-dev libpam0g-dev \
         libpcre2-dev libprotobuf-c-dev libpython3-dev libreadline-dev \
-        librtr-dev libsnmp-dev libssh-dev libyang2-dev lsb-base pkg-config \
+        librtr-dev libsnmp-dev libssh-dev libyang-dev lsb-base pkg-config \
         protobuf-c-compiler python3 python3-dev python3-pytest python3-sphinx \
         sphinx-common texinfo autoconf automake libtool pkgconf >/dev/null
     dpkg-buildpackage -b -us -uc
