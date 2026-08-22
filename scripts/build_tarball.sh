@@ -49,7 +49,11 @@ mkdir -p "$stage/srv6-mup-bundle/selftests/lib/sh"
 # 1. Linux kernel deb
 ###############################################################################
 echo "==> Building Linux kernel deb (KDEB_PKGVERSION=$KERNEL_PKG_VER) ..."
-( cd "$LINUX" && make -j"$(nproc)" bindeb-pkg KDEB_PKGVERSION="$KERNEL_PKG_VER" )
+# The release .config carries CONFIG_DEBUG_INFO, so bindeb-pkg would also
+# emit a ~1.3 GB linux-image-*-dbg deb and trip the one-deb-per-kind check
+# below; the nokerneldbg build profile skips it.
+( cd "$LINUX" && DEB_BUILD_PROFILES=pkg.linux-upstream.nokerneldbg \
+      make -j"$(nproc)" bindeb-pkg KDEB_PKGVERSION="$KERNEL_PKG_VER" )
 
 # `make bindeb-pkg` writes the .deb files into the directory above the source
 # tree, e.g. linux is at ~/ghq/github.com/higebu/linux so the .debs land in

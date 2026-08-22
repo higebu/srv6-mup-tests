@@ -135,6 +135,12 @@ The kernel deb does not have this constraint — `make bindeb-pkg`
 produces a deb that has no userspace ABI tied into it, so we build it
 directly on the host.
 
+`build_tarball.sh` runs `make bindeb-pkg` with
+`DEB_BUILD_PROFILES=pkg.linux-upstream.nokerneldbg`: the release `.config`
+has `CONFIG_DEBUG_INFO` enabled, and without the profile the build also
+emits a ~1.3 GB `linux-image-*-dbg` deb that the script's one-deb-per-kind
+check rejects.
+
 ## Quick sanity-check after rebuilding
 
 ```bash
