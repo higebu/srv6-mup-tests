@@ -47,7 +47,18 @@ the next release.
 See [`build-tarball.md`](build-tarball.md).  The script writes
 `~/srv6-mup-bundle.tar.gz`; expand it into `/tmp/srv6-mup-release/`:
 
+**Build the kernel from the Ubuntu-config tree, not the default
+sibling `linux/`.**  The development tree's `.config` is the minimal
+vng one; a deb built from it (~16 MB linux-image) will not boot a
+stock Ubuntu system.  Check out the release SHA in the
+`linux-ubuntu2604` tree (Ubuntu 26.04 config, linux-image ~117 MB)
+and point `LINUX` at it — this bit v45, whose kernel assets had to
+be re-uploaded:
+
 ```bash
+git -C ../linux-ubuntu2604 fetch ../linux seg6-mobile
+git -C ../linux-ubuntu2604 checkout <release SHA>
+LINUX=$PWD/../linux-ubuntu2604 \
 KERNEL_PKG_VER=7.1.0-srv6mup-NN IPROUTE2_PKG_TAG=srv6mupMM \
     scripts/build_tarball.sh
 mkdir -p /tmp/srv6-mup-release
