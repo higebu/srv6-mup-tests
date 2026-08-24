@@ -95,7 +95,7 @@ less /tmp/sft-debug.log
 
 | Selftest | What it asserts |
 |---|---|
-| `srv6_end_map_test.sh` | The configured `nh6` SID overwrites the outer DA; the SRH is left untouched. |
+| `srv6_end_map_test.sh` | The configured `mapped_sid` SID overwrites the outer DA; the SRH is left untouched. |
 | `srv6_end_m_gtp6_d_test.sh` | IPv6/UDP/GTP-U → SRv6. Wire SRH is `[D, E2E SID + Args.Mob.Session]`, i.e. the End.M.GTP6.E SID lives at the **penultimate** position (RFC 9433 §6.5 Note). |
 | `srv6_end_m_gtp6_d_di_test.sh` | IPv6/UDP/GTP-U → SRv6. The original outer DA is preserved as the last segment in transit (= wire `SRH[0]`); the GTP-U TEID is intentionally dropped (drop-in semantics). |
 | `srv6_end_m_gtp6_e_test.sh` | SRv6 → IPv6/UDP/GTP-U. `Args.Mob.Session` is extracted from the active SID (the outer DA at SL=1); the new GTP-U outer DA is `SRH[0]`. |
