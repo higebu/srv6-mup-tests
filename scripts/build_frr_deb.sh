@@ -50,7 +50,7 @@ FRR=${FRR:-${ROOT}/frr}
 [ -d "$FRR/.git" ] || FRR=$HOME/ghq/github.com/higebu/frr
 [ -d "$FRR/.git" ] || { echo "FRR tree not found (set \$FRR)" >&2; exit 1; }
 
-FRR_BRANCH=${FRR_BRANCH:-seg6-mobile}
+FRR_BRANCH=${FRR_BRANCH:-bgp-mup-safi-originate}
 FRR_PKG_TAG=${FRR_PKG_TAG:?set FRR_PKG_TAG (e.g. srv6mup2)}
 FRR_DCH_MSG=${FRR_DCH_MSG:-"BGP-MUP SAFI + SRv6 Mobile User Plane (${FRR_BRANCH})"}
 DEBEMAIL=${DEBEMAIL:-yuya.kusakabe@gmail.com}

@@ -82,7 +82,8 @@ To extract the standalone bzImage from the kernel deb:
 ### FRR (`scripts/build_frr_deb.sh`)
 
 ```bash
-FRR_PKG_TAG=srv6mupP scripts/build_frr_deb.sh
+FRR_BRANCH=bgp-mup-safi-originate FRR_PKG_TAG=srv6mupP \
+    scripts/build_frr_deb.sh
 ```
 
 The script:
