@@ -69,7 +69,7 @@ ethtool -K veth-e-vpp tx off rx off 2>/dev/null || true
 # .../64" below.
 ip -n srgw -6 route add 2001:db8::/32 \
     encap seg6mobile action End.M.GTP4.E \
-        sr_prefix_len 32 \
+        sr_prefix_len 32 v6_src_prefix_len 64 \
     dev veth-e
 
 # Generic RFC 8986 End at the "実体側" placeholder SID (= the segment
