@@ -141,6 +141,42 @@ has `CONFIG_DEBUG_INFO` enabled, and without the profile the build also
 emits a ~1.3 GB `linux-image-*-dbg` deb that the script's one-deb-per-kind
 check rejects.
 
+## Release kernel config
+
+The kernel is built in `../linux-ubuntu2604`, a git worktree of the
+development tree, and its config comes from `configs/kernel-release.config`
+(`$LINUX` / `$LINUX_SRC` / `$KERNEL_CONFIG` override all three).
+`build_tarball.sh` syncs the worktree to the development tree's HEAD, writes
+the release config into it, and runs `olddefconfig` before building. The
+development tree's own `.config` is never read.
+
+That separation is not cosmetic. vng writes a minimal config into the
+development tree's `.config` every time a selftest or an e2e scenario runs,
+and v55 was first published with a kernel built from one: 15 modules instead
+of 6825, no `igc` and no `i40e`, so a machine relying on either NIC came up
+with no network and could only be recovered from a console. Two worktrees
+also keep both object trees incrementally buildable, so switching between vng
+work and a release build does not force a full rebuild each time.
+
+`make O=<dir>` is not an option here: it refuses to run while the source tree
+holds in-tree build artifacts, and vng only builds in-tree.
+
+The config's module on/off settings were copied from the Ubuntu 26.04 generic
+kernel config. Four settings are deliberately different:
+
+| Setting                      | Value                     | Why                           |
+|------------------------------|---------------------------|-------------------------------|
+| `CONFIG_VERSION_SIGNATURE`   | dropped                   | not an Ubuntu-signed build    |
+| `CONFIG_SYSTEM_TRUSTED_KEYS` | `""`                      | build without distro keys     |
+| `CONFIG_MODULE_SIG_KEY`      | `certs/signing_key.pem`   | sign with a generated key     |
+| `CONFIG_LOCALVERSION`        | `"-srv6-mup"`             | identifies the build          |
+
+After `olddefconfig` answers whatever Kconfig symbols the kernel gained, the
+script writes the result back to `configs/kernel-release.config`. Commit that
+diff with the release so each config change is reviewed rather than silently
+inherited. The script also refuses to build if `CONFIG_IPV6_SEG6_MOBILE`,
+`CONFIG_IGC`, or `CONFIG_I40E` came out unset.
+
 ## Quick sanity-check after rebuilding
 
 ```bash

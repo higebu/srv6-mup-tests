@@ -1,9 +1,13 @@
 #!/bin/bash
 #
 # Build the SRv6 MUP distribution tarball ~/srv6-mup-bundle.tar.gz from:
-#   - Linux kernel at  $LINUX  (default: sibling ../linux of this repo)
-#       built with `make bindeb-pkg` to produce linux-image / linux-headers /
-#       linux-libc-dev .deb
+#   - Linux kernel built in $LINUX (default: sibling ../linux-ubuntu2604, a
+#       git worktree of $LINUX_SRC) with `make bindeb-pkg` to produce
+#       linux-image / linux-headers / linux-libc-dev .deb.  The worktree is
+#       synced to $LINUX_SRC's HEAD and its .config comes from
+#       $KERNEL_CONFIG, so a vng-generated config in the development tree
+#       cannot reach a release -- see docs/build-tarball.md "Release kernel
+#       config".
 #   - iproute2  at  $IPROUTE2  (default: sibling ../iproute2 of this repo)
 #       repackaged inside an srv6mup-build:$UBUNTU_SUITE container so the
 #       resulting deb matches that Ubuntu release's libc6 and layout.
@@ -14,6 +18,9 @@
 #   <parent>/srv6-mup-tests (this repo)
 # i.e. all three trees are siblings under a common parent.  Override
 # $LINUX / $IPROUTE2 if your layout differs.
+#   - kernel config from $KERNEL_CONFIG (default: ../configs/kernel-release.config).
+#       The generated config is written back to $KERNEL_CONFIG so olddefconfig
+#       drift lands in git as a reviewable diff.
 #   - selftests from $LINUX/tools/testing/selftests/net/srv6_*_test.sh
 #       (plus lib.sh and lib/sh/defer.sh that they source)
 #
@@ -30,11 +37,13 @@ set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-LINUX=${LINUX:-$ROOT/linux}
+LINUX_SRC=${LINUX_SRC:-$ROOT/linux}
+LINUX=${LINUX:-$ROOT/linux-ubuntu2604}
 IPROUTE2=${IPROUTE2:-$ROOT/iproute2}
 UBUNTU_SUITE=${UBUNTU_SUITE:-resolute}
 DOCKER_IMG=${DOCKER_IMG:-srv6mup-build:${UBUNTU_SUITE}}
 KERNEL_PKG_VER=${KERNEL_PKG_VER:-7.0.0-srv6mup-13}
+KERNEL_CONFIG=${KERNEL_CONFIG:-$HERE/../configs/kernel-release.config}
 IPROUTE2_PKG_TAG=${IPROUTE2_PKG_TAG:-srv6mup10}
 OUT=${OUT:-$HOME/srv6-mup-bundle.tar.gz}
 REF_IPROUTE2_DEB=${REF_IPROUTE2_DEB:-$HOME/srv6-mup-bundle/iproute2_*.deb}
@@ -49,15 +58,47 @@ mkdir -p "$stage/srv6-mup-bundle/selftests/lib/sh"
 # 1. Linux kernel deb
 ###############################################################################
 echo "==> Building Linux kernel deb (KDEB_PKGVERSION=$KERNEL_PKG_VER) ..."
+# The kernel is built in its own git worktree, never in the development tree.
+# vng rewrites the development tree's .config with a minimal config every time
+# a selftest or an e2e scenario runs, and v55 was first published with a
+# kernel built from one: 15 modules instead of 6825, no igc and no i40e, so a
+# machine relying on either NIC came up with no network.  A separate worktree
+# also keeps both trees incrementally buildable.
+[ -r "$KERNEL_CONFIG" ] || { echo "no release kernel config at $KERNEL_CONFIG" >&2; exit 1; }
+
+if [ "$LINUX" != "$LINUX_SRC" ]; then
+    sha=$(git -C "$LINUX_SRC" rev-parse HEAD)
+    if [ ! -d "$LINUX" ]; then
+        echo "==> Creating release build worktree $LINUX at $sha ..."
+        git -C "$LINUX_SRC" worktree add --detach "$LINUX" "$sha"
+    elif [ "$(git -C "$LINUX" rev-parse HEAD)" != "$sha" ]; then
+        echo "==> Syncing $LINUX to $sha ..."
+        git -C "$LINUX" checkout --detach "$sha"
+    fi
+fi
+
+cp "$KERNEL_CONFIG" "$LINUX/.config"
+( cd "$LINUX" && make olddefconfig )
+
+# Fail loudly rather than shipping a kernel the target machines cannot use.
+for sym in CONFIG_IPV6_SEG6_MOBILE=y CONFIG_IGC=m CONFIG_I40E=m; do
+    grep -qx "$sym" "$LINUX/.config" ||
+        { echo "release kernel config is missing $sym" >&2; exit 1; }
+done
+
 # The release .config carries CONFIG_DEBUG_INFO, so bindeb-pkg would also
 # emit a ~1.3 GB linux-image-*-dbg deb and trip the one-deb-per-kind check
 # below; the nokerneldbg build profile skips it.
 ( cd "$LINUX" && DEB_BUILD_PROFILES=pkg.linux-upstream.nokerneldbg \
       make -j"$(nproc)" bindeb-pkg KDEB_PKGVERSION="$KERNEL_PKG_VER" )
 
+# olddefconfig answers whatever Kconfig symbols the kernel gained since the
+# last release; write the result back so each release's config change shows
+# up as a reviewable diff instead of drifting silently.
+cp "$LINUX/.config" "$KERNEL_CONFIG"
+
 # `make bindeb-pkg` writes the .deb files into the directory above the source
-# tree, e.g. linux is at ~/ghq/github.com/higebu/linux so the .debs land in
-# ~/ghq/github.com/higebu/.
+# tree, e.g. linux-ubuntu2604 is under seg6-mobile/ so the .debs land there.
 LINUX_DEBS_DIR=$(dirname "$LINUX")
 shopt -s nullglob
 linux_image=( "$LINUX_DEBS_DIR"/linux-image-*"$KERNEL_PKG_VER"_amd64.deb )
