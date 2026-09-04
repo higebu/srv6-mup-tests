@@ -55,6 +55,13 @@ BIN=$HERE/../../../.bin
 #     reach a physical veth (post-action route lookups, drops at LOCAL_OUT).
 DEBUG=${DEBUG:-0}
 
+# ENCAP_BEHAVIOR=H_Encaps_Red configures pe1's `encap-behavior` so the
+# DL install uses H.Encaps.Red (RFC 9433 Section 5.3.2.2) instead of the
+# H.Encaps default.  The reduced form drops the SID the outer IPv6
+# destination already carries; the ICMP echo-reply leg of the check
+# below is what proves the far End.M.GTP4.E still accepts it.
+ENCAP_BEHAVIOR=${ENCAP_BEHAVIOR:-H_Encaps}
+
 export PATH="$ROOT/iproute2/ip:$BIN:$PATH"
 mount -t tmpfs tmpfs /tmp 2>/dev/null || true
 mount -t tmpfs tmpfs /usr/local/var/run 2>/dev/null
@@ -202,6 +209,14 @@ ip -n gnb route add $T2ST_EP/32 via 10.99.0.1
 for ns in pe1 gw1; do
 	install -m 644 $HERE/$ns/frr.conf /tmp/$ns/frr.conf
 done
+if [ "$ENCAP_BEHAVIOR" != "H_Encaps" ]; then
+	awk -v b="$ENCAP_BEHAVIOR" '
+		!seen && /^  locator default$/ {
+			print; print "  encap-behavior " b; seen = 1; next
+		}
+		{ print }' /tmp/pe1/frr.conf > /tmp/pe1/frr.conf.eb
+	mv /tmp/pe1/frr.conf.eb /tmp/pe1/frr.conf
+fi
 
 # -------------------------------------------------------------------------
 # Start FRR daemons in pe1 + gw1
@@ -404,16 +419,21 @@ PASS=1
 FAIL_REASONS=()
 fail() { PASS=0; FAIL_REASONS+=("$1"); }
 
-# (1) pe1's UE-prefix install: encap seg6 mode encap (H.Encaps).
+# (1) pe1's UE-prefix install: encap seg6, in the mode ENCAP_BEHAVIOR asks for.
 # The route MUST land in vrf-red (table 100), not main — BGP-MUP T1ST
 # imports per-RT just like L3VPN VPNv4 routes.  An install in main would
 # mean the slice's vrf isolation is broken.
 # Fold the whole entry into one line: an IPv6 install whose nexthop
 # ends up in a group prints the encap on a continuation line.
 PE1_T1ST=$(ip -n pe1 -d -4 route show table 100 $UE_PFX 2>&1 | tr '\n' ' ')
+if [ "$ENCAP_BEHAVIOR" = "H_Encaps_Red" ]; then
+	T1ST_MODE="mode encap.red"
+else
+	T1ST_MODE="mode encap"
+fi
 case "$PE1_T1ST" in
-	*"encap seg6"*"mode encap"*) ;;
-	*) fail "pe1: T1ST install missing 'encap seg6 mode encap' in vrf-red (got: $PE1_T1ST)" ;;
+	*"encap seg6"*"$T1ST_MODE"*) ;;
+	*) fail "pe1: T1ST install missing 'encap seg6 $T1ST_MODE' in vrf-red (got: $PE1_T1ST)" ;;
 esac
 PE1_T1ST_MAIN=$(ip -n pe1 -4 route show table main $UE_PFX 2>&1 | head -1)
 [ -z "$PE1_T1ST_MAIN" ] || \

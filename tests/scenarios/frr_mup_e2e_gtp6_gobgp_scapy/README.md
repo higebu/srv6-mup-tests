@@ -76,6 +76,10 @@ Troubleshooting flags:
 
 - `DEBUG=1` — bring up `nlmon0` (RTM_NEWROUTE observation) and
   `tcpdump -i any` on pe1 / gw1.
+- `ENCAP_BEHAVIOR=H_Encaps_Red` — configure pe1's `encap-behavior` so
+  the DL install uses H.Encaps.Red (RFC 9433 Section 5.3.2.2) instead of
+  the H.Encaps default.  The DL probe (check 6) is what proves the far
+  End.M.GTP6.E still accepts the reduced encapsulation.
 
 ## Pass criteria
 
@@ -83,7 +87,8 @@ The script ends with `===VERDICT=== FRR-MUP-E2E-GTP6-GOBGP-SCAPY: PASS`.
 PASS conditions, in order:
 
 1. `pe1` installs `2001:db8:c::5/128` into vrf-red (table 100) with
-   `encap seg6 mode encap` (= H.Encaps).
+   `encap seg6 mode encap` (= H.Encaps; `mode encap.red` under
+   `ENCAP_BEHAVIOR=H_Encaps_Red`).
 2. `gw1` installs `2001:db8:a::100/128` into vrf-red with
    `encap seg6local` (action follows the current FRR implementation).
 3. `pe1` has an `End.DT6` seg6local install hanging off the DSD SID

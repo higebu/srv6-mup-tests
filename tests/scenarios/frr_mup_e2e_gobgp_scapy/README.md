@@ -78,12 +78,17 @@ Tunables (env):
 - `DEBUG=1` — enable `nlmon0` (RTM_NEWROUTE capture) on pe1/gw1 and
   per-netns `tcpdump -i any` so the seg6local internal flow is
   observable.
+- `ENCAP_BEHAVIOR=H_Encaps_Red` — configure pe1's `encap-behavior` so
+  the DL install uses H.Encaps.Red (RFC 9433 Section 5.3.2.2) instead of
+  the H.Encaps default.  The echo-reply leg of check 7 is what proves
+  the far End.M.GTP4.E still accepts the reduced encapsulation.
 
 ## Pass criteria
 
 `FRR-MUP-E2E-GOBGP-SCAPY: PASS` is printed iff every check passes:
 
 1. pe1 installs T1ST UE prefix into vrf-red with `encap seg6 mode encap`
+   (`mode encap.red` under `ENCAP_BEHAVIOR=H_Encaps_Red`)
    (and main FIB stays empty for the same prefix — slice isolation).
 2. gw1 installs T2ST endpoint into vrf-red with
    `encap seg6local action H.M.GTP4.D nh6 <pe1-DSD-SID>`.
