@@ -381,7 +381,9 @@ FAIL_REASONS=()
 fail() { PASS=0; FAIL_REASONS+=("$1"); }
 
 # (1) pe1's UE-prefix install: encap seg6 mode encap (H.Encaps).
-PE1_T1ST=$(ip -n pe1 -d -6 route show table 100 $UE_PFX 2>&1 | head -1)
+# Fold the whole entry into one line: an IPv6 install whose nexthop
+# ends up in a group prints the encap on a continuation line.
+PE1_T1ST=$(ip -n pe1 -d -6 route show table 100 $UE_PFX 2>&1 | tr '\n' ' ')
 case "$PE1_T1ST" in
 	*"encap seg6"*"mode encap"*) ;;
 	*) fail "pe1: T1ST install missing 'encap seg6 mode encap' in vrf-red (got: $PE1_T1ST)" ;;
