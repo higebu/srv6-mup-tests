@@ -26,6 +26,8 @@ This repo holds:
 ```
 srv6-mup-tests/
 ├── README.md                  -- this file
+├── .bin/                      -- gobgp / gobgpd the frr_* scenarios drive
+│                                 (not in git; see "gobgp binaries" below)
 ├── docs/
 │   ├── selftests.md           -- how to run the kernel selftests under vng
 │   ├── vpp-interop.md         -- how to run the 5 VPP interop scenarios + per-scenario topology
@@ -57,6 +59,27 @@ srv6-mup-tests/
 │                                 (test ingress + SR-domain wire + test egress)
 └── logs/                      -- runtime logs (.gitignore'd)
 ```
+
+### gobgp binaries
+
+`.bin/gobgp{,d}` are not tracked here.  The `frr_*` scenarios need a
+gobgp whose T1ST / T2ST route CLI accepts `prefix-sid`, which no
+released gobgp has: the parser change lives only as an uncommitted
+working-tree diff (+52/-10 in `cmd/gobgp/global.go`) on branch
+`srv6-mup-frr-interop` of the `osrg/gobgp` clone (origin =
+`higebu/gobgp`), over the GoBGP 4.5.0 tag `5f191066a78e`.  Rebuild with:
+
+```bash
+cd <osrg/gobgp clone> && git checkout srv6-mup-frr-interop
+go build -o <srv6-mup-tests>/.bin/gobgp  ./cmd/gobgp
+go build -o <srv6-mup-tests>/.bin/gobgpd ./cmd/gobgpd
+```
+
+That base predates osrg/gobgp#3418, so `rt` is still `paramSingle` and
+a scenario passing more than one `rt` will not work.  Getting both the
+`prefix-sid` support and `rt: paramList` needs the parser change
+committed and rebased onto current upstream — tracked in
+`issues/20260530-201922-feature-gobgp-mup-t1st-t2st-prefix-sid-cli.md`.
 
 ## BGP-MUP CLI property tests (`tests/properties/bgp_mup_cli/`)
 

@@ -122,14 +122,10 @@ ip netns exec pe2 $FRR/vtysh/vtysh --vty_socket /tmp/pe2 -f /tmp/pe2/frr.conf
 # T1ST/T2ST nexthops active and their seg6local installs reach the
 # kernel.  A connected /48 on a dummy interface alone does not satisfy
 # NHT for cross-vrf BGP nexthops.
-ip netns exec pe1 $FRR/vtysh/vtysh --vty_socket /tmp/pe1 \
-    -c "configure terminal" \
-    -c "ipv6 route 2001:db8:e::/48 2001:db8:1::2 veth-pe1g onlink" \
-    -c "exit"
-ip netns exec pe2 $FRR/vtysh/vtysh --vty_socket /tmp/pe2 \
-    -c "configure terminal" \
-    -c "ipv6 route 2001:db8:e::/48 2001:db8:2::1 veth-pe2 onlink" \
-    -c "exit"
+# staticd's onlink route does not reach the kernel in this netns
+# topology, so program the underlay directly.
+ip -n pe1 -6 route add 2001:db8:e::/48 via 2001:db8:1::2 dev veth-pe1g onlink
+ip -n pe2 -6 route add 2001:db8:e::/48 via 2001:db8:2::1 dev veth-pe2 onlink
 
 # --- start gobgpd in gbgp netns -------------------------------------------
 install -m 644 $HERE/gbgp/gobgpd.toml /tmp/gbgp/gobgpd.toml

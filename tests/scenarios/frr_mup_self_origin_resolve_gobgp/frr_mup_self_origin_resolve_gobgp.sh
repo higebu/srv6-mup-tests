@@ -86,6 +86,11 @@ ip -n gw1 link add vrf-red  type vrf table 100
 ip -n gw1 link add vrf-blue type vrf table 200
 ip -n gw1 link set vrf-red  up
 ip -n gw1 link set vrf-blue up
+# The End.M.GTP4.E install carries a vrftable attribute, which the kernel
+# only honours once the table-to-VRF binding is unambiguous (it rejects
+# with EPERM when strict_mode is off).  The knob only exists after the
+# first VRF device is created, so set it here rather than earlier.
+ip netns exec gw1 sysctl -wq net.vrf.strict_mode=1
 
 # Prime ND so BGP can come up promptly.
 ip netns exec gw1 ping -c 1 -W 1 2001:db8:1::2 >/dev/null 2>&1 || true
