@@ -7,7 +7,7 @@ ships three independently-versioned components built for Ubuntu 26.04 LTS
 
 | Component | Source branch | Build version |
 |-----------|---------------|---------------|
-| Linux kernel | [`higebu/linux seg6-mobile`](https://github.com/higebu/linux/tree/seg6-mobile)       | `7.1.0-srv6mup-NN` |
+| Linux kernel | [`higebu/linux seg6-mobile`](https://github.com/higebu/linux/tree/seg6-mobile)       | `7.3.0-srv6mup-NN` |
 | iproute2     | [`higebu/iproute2 seg6-mobile`](https://github.com/higebu/iproute2/tree/seg6-mobile) | `7.0.0-srv6mupMM`  |
 | FRR          | [`higebu/frr bgp-mup-safi-originate`](https://github.com/higebu/frr/tree/bgp-mup-safi-originate) | `10.8.0~dev+srv6mupP-0ubuntu1~resolute1` |
 
@@ -27,7 +27,7 @@ the next release.
 
 ```
 /tmp/srv6-mup-release/
-├── bzImage-7.1.0-rc1-srv6-mup-...                           # kernel
+├── bzImage-7.3.0-rc4-srv6-mup-...                           # kernel
 ├── linux-image-...-srv6mup-NN_amd64.deb                     # kernel
 ├── linux-headers-...-srv6mup-NN_amd64.deb                   # kernel
 ├── linux-libc-dev_...-srv6mup-NN_amd64.deb                  # kernel
@@ -59,15 +59,15 @@ be re-uploaded:
 git -C ../linux-ubuntu2604 fetch ../linux seg6-mobile
 git -C ../linux-ubuntu2604 checkout <release SHA>
 LINUX=$PWD/../linux-ubuntu2604 \
-KERNEL_PKG_VER=7.1.0-srv6mup-NN IPROUTE2_PKG_TAG=srv6mupMM \
+KERNEL_PKG_VER=7.3.0-srv6mup-NN IPROUTE2_PKG_TAG=srv6mupMM \
     scripts/build_tarball.sh
 mkdir -p /tmp/srv6-mup-release
 tar xzf ~/srv6-mup-bundle.tar.gz -C /tmp/srv6-mup-release \
-    --strip-components=1 \
-    srv6-mup-bundle/linux-image-*.deb \
-    srv6-mup-bundle/linux-headers-*.deb \
-    srv6-mup-bundle/linux-libc-dev_*.deb \
-    srv6-mup-bundle/iproute2_*.deb
+    --strip-components=1 --wildcards \
+    'srv6-mup-bundle/linux-image-*.deb' \
+    'srv6-mup-bundle/linux-headers-*.deb' \
+    'srv6-mup-bundle/linux-libc-dev_*.deb' \
+    'srv6-mup-bundle/iproute2_*.deb'
 ```
 
 To extract the standalone bzImage from the kernel deb:
@@ -113,7 +113,7 @@ SRv6 Mobile User Plane (RFC 9433) Ubuntu 26.04 LTS deb bundle.
 
 | Component    | Branch | Commit | Build version |
 |--------------|--------|--------|---------------|
-| Linux kernel | [`seg6-mobile`](https://github.com/higebu/linux/tree/seg6-mobile)       | <SHA> | `7.1.0-srv6mup-NN` |
+| Linux kernel | [`seg6-mobile`](https://github.com/higebu/linux/tree/seg6-mobile)       | <SHA> | `7.3.0-srv6mup-NN` |
 | iproute2     | [`seg6-mobile`](https://github.com/higebu/iproute2/tree/seg6-mobile)    | <SHA> | `7.0.0-srv6mupMM`  |
 | FRR          | [`bgp-mup-safi-originate`](https://github.com/higebu/frr/tree/bgp-mup-safi-originate) | <SHA> | `10.8.0~dev+srv6mupP-0ubuntu1~resolute1` |
 
