@@ -44,7 +44,8 @@ mkdir -p /tmp/old-deb-extract
 dpkg-deb -e /reference.deb /tmp/old-deb-extract/DEBIAN
 cp -r /tmp/old-deb-extract/DEBIAN "$STAGING/"
 
-NEW_VER="7.0.0-${VERSION_TAG:-srv6mup8}"
+UPSTREAM_VER=$(sed -n 's/.*version\[\] = "\(.*\)";/\1/p' /src/include/version.h)
+NEW_VER="${UPSTREAM_VER}-${VERSION_TAG:-srv6mup8}"
 sed -i "s/^Version:.*/Version: ${NEW_VER}/" "$STAGING/DEBIAN/control"
 
 # Drop conffiles that we did not install

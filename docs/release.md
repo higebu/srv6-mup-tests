@@ -8,7 +8,7 @@ ships three independently-versioned components built for Ubuntu 26.04 LTS
 | Component | Source branch | Build version |
 |-----------|---------------|---------------|
 | Linux kernel | [`higebu/linux seg6-mobile`](https://github.com/higebu/linux/tree/seg6-mobile)       | `7.4.0-srv6mup-NN` |
-| iproute2     | [`higebu/iproute2 seg6-mobile`](https://github.com/higebu/iproute2/tree/seg6-mobile) | `7.0.0-srv6mupMM`  |
+| iproute2     | [`higebu/iproute2 seg6-mobile`](https://github.com/higebu/iproute2/tree/seg6-mobile) | `7.2.0-srv6mupMM`  |
 | FRR          | [`higebu/frr bgp-mup-safi-originate`](https://github.com/higebu/frr/tree/bgp-mup-safi-originate) | `10.8.0~dev+srv6mupP-0ubuntu1~resolute1` |
 
 Ubuntu 24.04 cannot use these: 26.04 dropped `libyang2` and the FRR debs
@@ -31,7 +31,7 @@ the next release.
 ├── linux-image-...-srv6mup-NN_amd64.deb                     # kernel
 ├── linux-headers-...-srv6mup-NN_amd64.deb                   # kernel
 ├── linux-libc-dev_...-srv6mup-NN_amd64.deb                  # kernel
-├── iproute2_7.0.0-srv6mupMM_amd64.deb                       # iproute2
+├── iproute2_7.2.0-srv6mupMM_amd64.deb                       # iproute2
 ├── frr_10.8.0~dev+srv6mupP-0ubuntu1~resolute1_amd64.deb     # FRR
 ├── frr-doc_..._all.deb                                      # FRR
 ├── frr-pythontools_..._all.deb                              # FRR
@@ -114,7 +114,7 @@ SRv6 Mobile User Plane (RFC 9433) Ubuntu 26.04 LTS deb bundle.
 | Component    | Branch | Commit | Build version |
 |--------------|--------|--------|---------------|
 | Linux kernel | [`seg6-mobile`](https://github.com/higebu/linux/tree/seg6-mobile)       | <SHA> | `7.4.0-srv6mup-NN` |
-| iproute2     | [`seg6-mobile`](https://github.com/higebu/iproute2/tree/seg6-mobile)    | <SHA> | `7.0.0-srv6mupMM`  |
+| iproute2     | [`seg6-mobile`](https://github.com/higebu/iproute2/tree/seg6-mobile)    | <SHA> | `7.2.0-srv6mupMM`  |
 | FRR          | [`bgp-mup-safi-originate`](https://github.com/higebu/frr/tree/bgp-mup-safi-originate) | <SHA> | `10.8.0~dev+srv6mupP-0ubuntu1~resolute1` |
 
 ## Changes since v<PREV>
