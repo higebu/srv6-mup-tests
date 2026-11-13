@@ -110,7 +110,7 @@ $VPPCTL sr localsid address 2001:db8:e:0:0:14:0:123 behavior end.dt6 0
 # lookup forwards out host-veth-f.
 $VPPCTL ip route add 2001:db8:9::/64 via 2001:db8:3::e host-veth-f
 
-VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {print $3}')
+VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
 ip -n srgw -6 neigh replace 2001:db8:2::e dev veth-e lladdr "$VPP_E_MAC" nud permanent
 
 DN_MAC=$(ip -n dn link show veth-f-dn | awk '/ether/ {print $2}')

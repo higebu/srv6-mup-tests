@@ -112,10 +112,10 @@ $VPPCTL set ip neighbor host-veth-e-vpp 2001:db8:2::1 $SRGW_E_MAC
 GNB_MAC=$(ip -n gnb link show veth-g-gnb | awk '/ether/ {print $2}')
 $VPPCTL set ip neighbor host-veth-g 2001:db8:1::2 $GNB_MAC
 
-VPP_G_MAC=$($VPPCTL show hardware-interfaces host-veth-g | awk '/Ethernet address/ {print $3}')
+VPP_G_MAC=$($VPPCTL show hardware-interfaces host-veth-g | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
 ip -n gnb -6 neigh replace 2001:db8:1::1 dev veth-g-gnb lladdr "$VPP_G_MAC" nud permanent
 
-VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {print $3}')
+VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
 ip -n srgw -6 neigh replace 2001:db8:2::e dev veth-e lladdr "$VPP_E_MAC" nud permanent
 
 DN_MAC=$(ip -n dn link show veth-x-dn | awk '/ether/ {print $2}')

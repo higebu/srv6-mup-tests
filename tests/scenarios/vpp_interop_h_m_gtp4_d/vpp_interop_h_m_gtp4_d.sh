@@ -72,8 +72,8 @@ $VPPCTL ip route add 10.0.1.0/24 via 10.0.1.2 host-veth-f
 $VPPCTL ip route add 10.99.0.0/24 via 10.0.1.2 host-veth-f
 
 # Use VPP's actual host-interface MAC (it may auto-assign different from kernel veth)
-VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {print $3}')
-VPP_F_MAC=$($VPPCTL show hardware-interfaces host-veth-f      | awk '/Ethernet address/ {print $3}')
+VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
+VPP_F_MAC=$($VPPCTL show hardware-interfaces host-veth-f      | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
 echo "VPP veth-e-vpp MAC: $VPP_E_MAC"
 echo "VPP veth-f      MAC: $VPP_F_MAC"
 ip -n srgw -6 neigh replace 2001:db8:2::e dev veth-e lladdr "$VPP_E_MAC" nud permanent

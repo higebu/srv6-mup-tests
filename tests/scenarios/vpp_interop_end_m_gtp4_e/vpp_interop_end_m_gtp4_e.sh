@@ -154,11 +154,11 @@ GNB_MAC=$(ip -n gnb link show veth-g-gnb | awk '/ether/ {print $2}')
 $VPPCTL set ip neighbor host-veth-g 10.0.0.2 $GNB_MAC
 
 # Use VPP's actual veth MAC for kernel-side static neigh (gnb-side).
-VPP_G_MAC=$($VPPCTL show hardware-interfaces host-veth-g | awk '/Ethernet address/ {print $3}')
+VPP_G_MAC=$($VPPCTL show hardware-interfaces host-veth-g | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
 ip -n gnb neigh replace 10.0.0.1 dev veth-g-gnb lladdr "$VPP_G_MAC" nud permanent
 
 # srgw needs to know how to reach VPP's veth-e-vpp link-layer.
-VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {print $3}')
+VPP_E_MAC=$($VPPCTL show hardware-interfaces host-veth-e-vpp | awk '/Ethernet address/ {sub(/\r$/, "", $3); print $3}')
 ip -n srgw -6 neigh replace 2001:db8:2::e dev veth-e lladdr "$VPP_E_MAC" nud permanent
 
 # dn needs ARP toward srgw too (for return GTP-U from srgw via veth-x).
